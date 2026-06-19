@@ -144,7 +144,10 @@ const Kernel = {
         sessionStorage.setItem('apex_booted', 'true');
         this.startClock();
         System.setupShortcuts();
+        System.updateUserDisplay();
         System.notify("System booted successfully", "success");
+        // Startup Sound Mock
+        console.log("🔊 Playing Startup Sound...");
     },
 
     bootLogs: [
@@ -163,12 +166,23 @@ const Kernel = {
     startClock() {
         const clock = document.getElementById('clock');
         clock.onclick = () => this.showCalendar();
+        clock.title = new Date().toDateString();
         setInterval(() => {
             const now = new Date();
-            clock.textContent = now.toLocaleTimeString();
+            clock.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+            clock.title = now.toDateString();
             this.updateSystemStats();
+            this.updateNetworkStatus();
         }, 1000);
         this.initBattery();
+        this.updateNetworkStatus();
+    },
+
+    updateNetworkStatus() {
+        const stats = document.getElementById('sys-stats');
+        const netIcon = navigator.onLine ? '🌐' : '🚫';
+        const currentStats = stats.textContent.split('|').pop().trim();
+        stats.innerHTML = `${netIcon} | ${currentStats}`;
     },
 
     initBattery() {
@@ -186,12 +200,9 @@ const Kernel = {
 
     updateSystemStats() {
         const stats = document.getElementById('sys-stats');
-        if (localStorage.getItem('apex_show_stats') === 'true') {
-            const mem = (performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : '??') + 'MB';
-            stats.textContent = `RAM: ${mem}`;
-        } else {
-            stats.textContent = '';
-        }
+        const mem = (performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : Math.floor(Math.random() * 500 + 200)) + 'MB';
+        const netIcon = navigator.onLine ? '🌐' : '🚫';
+        stats.textContent = `${netIcon} | RAM: ${mem}`;
     },
 
     showCalendar() {
@@ -219,30 +230,126 @@ const System = {
     notifications: [],
     
     notify(message, type = 'info') {
-        console.log(`[System] ${message}`);
-        const container = document.getElementById('notification-container') || this.createNotificationContainer();
+        const container = document.getElementById('notification-container');
+        if (!container) return;
         
         const toast = document.createElement('div');
         toast.className = `notification toast-${type}`;
         toast.innerHTML = `
-            <div class="notification-content">${message}</div>
-            <div class="notification-progress"></div>
+            <div style="font-weight:bold; margin-bottom:5px">${type.toUpperCase()}</div>
+            <div>${message}</div>
         `;
         
         container.appendChild(toast);
         
-        // Remove after animation
+        // Sound effect (mock)
+        const audio = new Audio(); // Would be a real file in a real OS
+        
         setTimeout(() => {
-            toast.classList.add('fade-out');
-            setTimeout(() => toast.remove(), 500);
-        }, 3000);
+            toast.style.animation = 'notifySlideIn 0.3s ease-in reverse forwards';
+            setTimeout(() => toast.remove(), 300);
+        }, 5000);
     },
 
-    createNotificationContainer() {
-        const container = document.createElement('div');
-        container.id = 'notification-container';
-        document.body.appendChild(container);
-        return container;
+    toggleControlCenter() {
+        const cc = document.getElementById('control-center');
+        cc.classList.toggle('hidden');
+        if (!cc.classList.contains('hidden')) {
+            // Update active states
+            cc.querySelectorAll('.cc-tile').forEach(tile => {
+                const feature = tile.querySelector('span:last-child').textContent;
+                if (localStorage.getItem(`cc_${feature}`) === 'true') {
+                    tile.classList.add('active');
+                } else {
+                    tile.classList.remove('active');
+                }
+            });
+        }
+    },
+
+    setBrightness(val) {
+        let overlay = document.getElementById('brightness-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'brightness-overlay';
+            document.body.appendChild(overlay);
+        }
+        overlay.style.opacity = (100 - val) / 100;
+        localStorage.setItem('sys_brightness', val);
+    },
+
+    setVolume(val) {
+        this.volume = val;
+        localStorage.setItem('sys_volume', val);
+        this.notify(`Volume set to ${val}%`, 'info');
+    },
+
+    toggleNightLight() {
+        let overlay = document.getElementById('night-light-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'night-light-overlay';
+            document.body.appendChild(overlay);
+        }
+        const isActive = overlay.style.display === 'block';
+        overlay.style.display = isActive ? 'none' : 'block';
+        localStorage.setItem('cc_Night Light', !isActive);
+        this.notify(`Night Light ${!isActive ? 'Enabled' : 'Disabled'}`, 'info');
+    },
+
+    toggleWifi() {
+        const current = localStorage.getItem('cc_WiFi') === 'true';
+        localStorage.setItem('cc_WiFi', !current);
+        this.notify(`WiFi ${!current ? 'Connected' : 'Disconnected'}`, 'info');
+        this.updateNetworkStatus();
+    },
+
+    toggleBluetooth() {
+        const current = localStorage.getItem('cc_Bluetooth') === 'true';
+        localStorage.setItem('cc_Bluetooth', !current);
+        this.notify(`Bluetooth ${!current ? 'Enabled' : 'Disabled'}`, 'info');
+    },
+
+    toggleAirplane() {
+        const current = localStorage.getItem('cc_Airplane') === 'true';
+        localStorage.setItem('cc_Airplane', !current);
+        this.notify(`Airplane Mode ${!current ? 'Enabled' : 'Disabled'}`, 'info');
+    },
+
+    lockScreen() {
+        const ls = document.getElementById('lock-screen');
+        ls.classList.remove('hidden');
+        this.updateLockTime();
+        this.lockInterval = setInterval(() => this.updateLockTime(), 60000);
+        
+        const passInput = document.getElementById('lock-pass');
+        passInput.value = '';
+        passInput.focus();
+        passInput.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                if (passInput.value.toLowerCase() === 'apex') {
+                    this.unlockScreen();
+                } else {
+                    document.getElementById('lock-msg').textContent = 'Incorrect Password!';
+                    document.getElementById('lock-msg').style.color = '#ff4444';
+                    setTimeout(() => {
+                        document.getElementById('lock-msg').textContent = 'Press Enter to Unlock';
+                        document.getElementById('lock-msg').style.color = '';
+                    }, 2000);
+                }
+            }
+        };
+    },
+
+    unlockScreen() {
+        document.getElementById('lock-screen').classList.add('hidden');
+        clearInterval(this.lockInterval);
+    },
+
+    updateLockTime() {
+        const now = new Date();
+        document.getElementById('lock-time').textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        document.getElementById('lock-date').textContent = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
     },
 
     launchRunDialog() {
@@ -250,10 +357,12 @@ const System = {
 
         const dialog = document.createElement('div');
         dialog.id = 'run-dialog';
+        dialog.style = "position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(20,20,20,0.9); backdrop-filter:blur(20px); padding:20px; border-radius:15px; border:1px solid var(--accent-color); z-index:12000; width:400px; box-shadow:0 0 50px rgba(0,0,0,0.8)";
         dialog.innerHTML = `
-            <div class="run-dialog-inner">
+            <div style="margin-bottom:15px; font-weight:bold; color:var(--accent-color)">Run Command</div>
+            <div style="display:flex; align-items:center">
                 <span style="color:var(--accent-color); margin-right:10px">></span>
-                <input type="text" id="run-input" placeholder="Type app name or command..." autofocus>
+                <input type="text" id="run-input" placeholder="Type app name (terminal, calc, etc.)" style="background:transparent; border:none; border-bottom:1px solid #444; color:white; flex:1; outline:none; font-family:inherit" autofocus>
             </div>
         `;
         document.body.appendChild(dialog);
@@ -266,8 +375,6 @@ const System = {
                 const val = input.value.trim().toLowerCase();
                 if (Apps[val]) {
                     Apps[val].launch();
-                } else if (val === 'terminal') {
-                    Apps.terminal.launch();
                 } else {
                     this.notify(`App not found: ${val}`, 'error');
                 }
@@ -276,41 +383,67 @@ const System = {
                 dialog.remove();
             }
         };
-
-        // Close on click outside
-        dialog.onclick = (e) => {
-            if (e.target === dialog) dialog.remove();
-        };
     },
 
     setupShortcuts() {
         document.addEventListener('keydown', (e) => {
+            // Konami Code: Up, Up, Down, Down, Left, Right, Left, Right, B, A
+            this.konami = this.konami || [];
+            this.konami.push(e.key);
+            this.konami = this.konami.slice(-10);
+            if (this.konami.join(',') === 'ArrowUp,ArrowUp,ArrowDown,ArrowDown,ArrowLeft,ArrowRight,ArrowLeft,ArrowRight,b,a') {
+                this.notify("EASTER EGG: God Mode Enabled!", "success");
+                document.body.style.filter = 'hue-rotate(180deg)';
+            }
+
+            // Win + L: Lock
+            if (e.metaKey && e.key.toLowerCase() === 'l') {
+                e.preventDefault();
+                this.lockScreen();
+            }
+            // Win + R: Run
+            if (e.metaKey && e.key.toLowerCase() === 'r') {
+                e.preventDefault();
+                this.launchRunDialog();
+            }
+            // Win + D: Show Desktop
+            if (e.metaKey && e.key.toLowerCase() === 'd') {
+                e.preventDefault();
+                wm.showDesktop();
+            }
             // Alt + T: Terminal
             if (e.altKey && e.key.toLowerCase() === 't') {
                 e.preventDefault();
                 Apps.terminal.launch();
             }
-            // Alt + E: Explorer
-            if (e.altKey && e.key.toLowerCase() === 'e') {
+            // Alt + Tab: Switch windows (mock)
+            if (e.altKey && e.key === 'Tab') {
                 e.preventDefault();
-                Apps.explorer.launch();
+                this.notify("Alt+Tab switching is coming soon!", "info");
             }
-            // Alt + R: Run Dialog
-            if (e.altKey && e.key.toLowerCase() === 'r') {
-                e.preventDefault();
-                this.launchRunDialog();
-            }
-            // Escape: Close Start Menu and Run Dialog
+            // Escape: Close Menus
             if (e.key === 'Escape') {
                 document.getElementById('start-menu').classList.add('hidden');
+                document.getElementById('control-center').classList.add('hidden');
+                document.getElementById('power-menu').classList.add('hidden');
                 const runDialog = document.getElementById('run-dialog');
                 if (runDialog) runDialog.remove();
             }
         });
     },
 
+    togglePowerMenu() {
+        document.getElementById('power-menu').classList.toggle('hidden');
+    },
+
+    updateUserDisplay() {
+        const name = localStorage.getItem('apex_user') || 'Apex User';
+        const el = document.getElementById('display-username');
+        if (el) el.textContent = name;
+    },
+
     sortIcons() {
-        const appsWithIcons = ["terminal", "browser", "explorer", "editor", "notes", "calc", "clock", "settings", "snake", "paint", "weather", "sysinfo"];
+        const appsWithIcons = ["terminal", "browser", "explorer", "editor", "notes", "calc", "clock", "settings", "snake", "paint", "weather", "sysinfo", "imageviewer", "stopwatch", "unitconv", "help"];
         appsWithIcons.forEach(appKey => {
             localStorage.removeItem(`icon-pos-${appKey}`);
         });
@@ -377,7 +510,9 @@ class WindowManager {
 
         win.querySelector('.max-btn').onclick = (e) => {
             e.stopPropagation();
-            win.classList.toggle('maximized');
+            const isMax = win.classList.toggle('maximized');
+            win.querySelector('.max-btn').textContent = isMax ? '❐' : '[]';
+            win.querySelector('.max-btn').title = isMax ? 'Restore' : 'Maximize';
         };
 
         // Simple focus mechanism
@@ -497,20 +632,21 @@ class WindowManager {
                     // Snap to Top -> Maximize
                     if (e.clientY < 10) {
                         element.classList.add('maximized');
+                        element.querySelector('.max-btn').textContent = '❐';
                     } 
                     // Snap to Left -> Half Screen Left
                     else if (e.clientX < 10) {
-                        element.style.top = '40px';
+                        element.style.top = '0';
                         element.style.left = '0';
                         element.style.width = '50%';
-                        element.style.height = 'calc(100vh - 40px)';
+                        element.style.height = '100%';
                     }
                     // Snap to Right -> Half Screen Right
                     else if (e.clientX > window.innerWidth - 10) {
-                        element.style.top = '40px';
+                        element.style.top = '0';
                         element.style.left = '50%';
                         element.style.width = '50%';
-                        element.style.height = 'calc(100vh - 40px)';
+                        element.style.height = '100%';
                     }
                 }
             };
@@ -561,104 +697,173 @@ const Apps = {
         launch: () => {
             const id = `term-${Date.now()}`;
             wm.createWindow("Terminal", `
-                <div class="terminal-output" id="${id}-out">ApexOS Shell v0.1\nType 'help' for commands.</div>
-                <div class="terminal-input-line">
-                    <span>></span>
-                    <input type="text" class="terminal-input" id="${id}-in" autofocus>
+                <div class="terminal-output" id="${id}-out" style="height:calc(100% - 30px); overflow-y:auto; font-family:'Courier New', monospace; padding:10px; font-size:0.9em">ApexOS Shell v1.4\nType 'help' for commands.</div>
+                <div class="terminal-input-line" style="display:flex; align-items:center; padding:5px 10px; background:rgba(0,0,0,0.3)">
+                    <span style="color:var(--accent-color); margin-right:5px">></span>
+                    <input type="text" class="terminal-input" id="${id}-in" style="background:transparent; border:none; color:white; flex:1; outline:none; font-family:inherit" autofocus>
                 </div>
-            `, 400, 300, 'terminal');
+            `, 600, 400, 'terminal');
 
             const input = document.getElementById(`${id}-in`);
             const output = document.getElementById(`${id}-out`);
+            let history = JSON.parse(localStorage.getItem('terminal_history') || '[]');
+            let historyIndex = history.length;
 
             input.onkeydown = (e) => {
                 if (e.key === "Enter") {
-                    const cmd = input.value.trim().toLowerCase();
-                    output.innerHTML += `<div>> ${cmd}</div>`;
+                    const cmdInput = input.value.trim();
+                    const cmd = cmdInput.toLowerCase();
+                    if (cmdInput) {
+                        history.push(cmdInput);
+                        if (history.length > 50) history.shift();
+                        localStorage.setItem('terminal_history', JSON.stringify(history));
+                    }
+                    historyIndex = history.length;
+
+                    output.innerHTML += `<div><span style="color:var(--accent-color)">></span> ${cmdInput}</div>`;
                     
-                    if (cmd === "ls") {
+                    const args = cmd.split(" ");
+                    const command = args[0];
+
+                    if (command === "ls") {
                         output.innerHTML += `<div>${Kernel.listDir()}</div>`;
-                    } else if (cmd.startsWith("mkdir ")) {
-                        const name = cmd.substring(6).trim();
-                        if (Kernel.makeDir(name)) {
+                    } else if (command === "pwd") {
+                        output.innerHTML += `<div>${Kernel.currentDir}</div>`;
+                    } else if (command === "mkdir") {
+                        const name = args[1];
+                        if (name && Kernel.makeDir(name)) {
                             output.innerHTML += `<div>Directory created: ${name}</div>`;
                         } else {
-                            output.innerHTML += `<div>Failed to create directory.</div>`;
+                            output.innerHTML += `<div>Usage: mkdir <dirname></div>`;
                         }
-                    } else if (cmd.startsWith("touch ")) {
-                        const name = cmd.substring(6).trim();
-                        Kernel.saveFile(name, "");
-                        output.innerHTML += `<div>File created: ${name}</div>`;
-                    } else if (cmd.startsWith("rm ")) {
-                        const name = cmd.substring(3).trim();
-                        if (Kernel.deleteFile(name)) {
+                    } else if (command === "touch") {
+                        const name = args[1];
+                        if (name) {
+                            Kernel.saveFile(name, "");
+                            output.innerHTML += `<div>File created: ${name}</div>`;
+                        } else {
+                            output.innerHTML += `<div>Usage: touch <filename></div>`;
+                        }
+                    } else if (command === "rm") {
+                        const name = args[1];
+                        if (name && Kernel.deleteFile(name)) {
                             output.innerHTML += `<div>Deleted: ${name}</div>`;
                         } else {
-                            output.innerHTML += `<div>File not found: ${name}</div>`;
+                            output.innerHTML += `<div>File not found or usage: rm <filename></div>`;
                         }
-                    } else if (cmd.startsWith("cat ")) {
-                        const file = cmd.split(" ")[1];
+                    } else if (command === "cat") {
+                        const file = args[1];
                         if (!file) {
                             output.innerHTML += `<div>Usage: cat <filename></div>`;
                         } else {
                             const content = Kernel.getFile(file);
                             output.innerHTML += content ? `<div style="white-space:pre-wrap; background:#111; padding:5px; border-left:2px solid var(--accent-color)">${content}</div>` : `<div>File not found: ${file}</div>`;
                         }
-                    } else if (cmd.startsWith("echo ")) {
-                        output.innerHTML += `<div>${input.value.substring(5)}</div>`;
-                    } else if (cmd === "matrix") {
-                        this.launchMatrix();
-                    } else if (cmd === "weather") {
-                        Apps.weather.launch();
-                    } else if (cmd === "help") {
-                        output.innerHTML += `<div>Commands: ls, mkdir, touch, rm, cat, echo, clear, help, whoami, date, apexfetch, neofetch, ver, theme, matrix, weather, reboot</div>`;
-                    } else if (cmd === "whoami") {
+                    } else if (command === "echo") {
+                        output.innerHTML += `<div>${cmdInput.substring(5)}</div>`;
+                    } else if (command === "ping") {
+                        const host = args[1] || "apexos.dev";
+                        output.innerHTML += `<div>PING ${host} (127.0.0.1): 56 data bytes</div>`;
+                        let count = 0;
+                        const pingInt = setInterval(() => {
+                            output.innerHTML += `<div>64 bytes from 127.0.0.1: icmp_seq=${count} ttl=64 time=${(Math.random()*10).toFixed(3)} ms</div>`;
+                            output.scrollTop = output.scrollHeight;
+                            if (++count >= 4) {
+                                clearInterval(pingInt);
+                                output.innerHTML += `<div>--- ${host} ping statistics ---</div>`;
+                                output.innerHTML += `<div>4 packets transmitted, 4 packets received, 0.0% packet loss</div>`;
+                            }
+                        }, 500);
+                    } else if (command === "uname") {
+                        output.innerHTML += `<div>ApexOS ApexKernel 0.2.0-generic x86_64 WebOS</div>`;
+                    } else if (command === "uptime") {
+                        const secs = Math.floor(performance.now() / 1000);
+                        const mins = Math.floor(secs / 60);
+                        output.innerHTML += `<div>up ${mins} minutes, ${secs % 60} seconds</div>`;
+                    } else if (command === "fortune") {
+                        const quotes = [
+                            "The best way to predict the future is to invent it.",
+                            "Everything is a file.",
+                            "Talk is cheap. Show me the code.",
+                            "Simplicity is the soul of efficiency.",
+                            "In a world without fences and walls, who needs Gates and Windows?"
+                        ];
+                        output.innerHTML += `<div style="color:var(--accent-color)">${quotes[Math.floor(Math.random()*quotes.length)]}</div>`;
+                    } else if (command === "notify") {
+                        System.notify(args.slice(1).join(" ") || "Terminal notification", "info");
+                    } else if (command === "help") {
+                        output.innerHTML += `<div>Available: ls, pwd, mkdir, touch, rm, cat, echo, ping, uname, uptime, fortune, notify, clear, help, whoami, date, neofetch, theme, matrix, weather, snake, calc, editor, explorer, reboot, exit</div>`;
+                    } else if (command === "whoami") {
                         output.innerHTML += `<div>apex_user</div>`;
-                    } else if (cmd === "clear") {
+                    } else if (command === "clear") {
                         output.innerHTML = "";
-                    } else if (cmd === "date") {
+                    } else if (command === "date") {
                         output.innerHTML += `<div>${new Date().toLocaleString()}</div>`;
-                    } else if (cmd === "ver") {
-                        output.innerHTML += `<div>ApexOS v1.3.0 "Power Update"</div>`;
-                    } else if (cmd === "reboot") {
-                        output.innerHTML += `<div>Rebooting...</div>`;
-                        setTimeout(() => location.reload(), 1000);
-                    } else if (cmd === "apexfetch" || cmd === "neofetch") {
+                    } else if (command === "reboot") {
+                        location.reload();
+                    } else if (command === "exit") {
+                        input.closest('.window').querySelector('.close-btn').click();
+                    } else if (command === "neofetch") {
                         output.innerHTML += `
-                            <div style="display:flex; gap:10px; margin-top:5px; color:var(--accent-color)">
-                                <div style="font-size:1.5em">🚀</div>
+                            <div style="display:flex; gap:15px; margin-top:5px; color:var(--accent-color)">
+                                <pre style="font-size:10px; line-height:1">
+  /\  
+ /  \ 
+/----\
+|    |
+|____|
+                                </pre>
                                 <div>
-                                    <b>ApexOS v1.3.0</b><br>
-                                    Kernel: ApexKernel 0.2.0<br>
-                                    VFS: Online<br>
+                                    <b style="color:white">apex_user@ApexOS</b><br>
+                                    -----------------<br>
+                                    OS: ApexOS v1.4.0<br>
+                                    Kernel: 0.2.0-web<br>
                                     Uptime: ${Math.floor(performance.now()/60000)}m<br>
-                                    Resolution: ${window.innerWidth}x${window.innerHeight}
+                                    Packages: 42 (npm)<br>
+                                    Shell: apexsh 1.0<br>
+                                    UI: Sleek Glass<br>
+                                    RAM: ${Math.round(performance.memory ? performance.memory.usedJSHeapSize / 1048576 : 256)}MB
                                 </div>
                             </div>
                         `;
+                    } else if (command === "snake") {
+                        Apps.snake.launch();
+                    } else if (command === "calc") {
+                        Apps.calc.launch();
+                    } else if (command === "editor") {
+                        Apps.editor.launch();
+                    } else if (command === "explorer") {
+                        Apps.explorer.launch();
+                    } else if (command === "theme") {
+                        output.innerHTML += `<div>Usage: theme <name> (matrix, cyberpunk, light, classic, sleek)</div>`;
                     } else if (cmd.startsWith("theme ")) {
                         const theme = cmd.split(" ")[1];
-                        const themes = {
-                            "matrix": "default",
-                            "cyberpunk": "theme-cyberpunk",
-                            "light": "theme-light",
-                            "classic": "theme-classic",
-                            "sleek": "theme-sleek"
-                        };
+                        const themes = {"matrix": "default", "cyberpunk": "theme-cyberpunk", "light": "theme-light", "classic": "theme-classic", "sleek": "theme-sleek"};
                         if (themes[theme]) {
                             const target = themes[theme];
                             document.body.className = target === 'default' ? '' : target;
                             localStorage.setItem('apex_theme', target);
                             output.innerHTML += `<div>Theme changed to ${theme}.</div>`;
-                        } else {
-                            output.innerHTML += `<div>Available themes: matrix, cyberpunk, light, classic, sleek</div>`;
                         }
                     } else if (cmd !== "") {
-                        output.innerHTML += `<div>Unknown command: ${cmd}</div>`;
+                        output.innerHTML += `<div>Unknown command: ${command}. Type 'help' for list.</div>`;
                     }
 
                     input.value = "";
                     output.scrollTop = output.scrollHeight;
+                } else if (e.key === "ArrowUp") {
+                    if (historyIndex > 0) {
+                        historyIndex--;
+                        input.value = history[historyIndex];
+                    }
+                } else if (e.key === "ArrowDown") {
+                    if (historyIndex < history.length - 1) {
+                        historyIndex++;
+                        input.value = history[historyIndex];
+                    } else {
+                        historyIndex = history.length;
+                        input.value = "";
+                    }
                 }
             };
         },
@@ -752,13 +957,13 @@ const Apps = {
         launch: () => {
             const winId = `calc-${Math.random().toString(36).substring(2, 9)}`;
             const win = wm.createWindow("Calculator", `
-                <div id="${winId}-display" style="background:#000; color:var(--text-color); padding:10px; text-align:right; margin-bottom:10px; border:1px solid var(--accent-color); min-height:40px; font-size:1.2em">0</div>
+                <div id="${winId}-display" style="background:#000; color:var(--accent-color); padding:10px; text-align:right; margin-bottom:10px; border:1px solid var(--accent-color); min-height:40px; font-size:1.5em; overflow:hidden">0</div>
                 <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:5px">
-                    ${['7','8','9','/','4','5','6','*','1','2','3','-','0','C','=','+'].map(b => 
-                        `<button class="calc-btn" style="padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer">${b}</button>`
+                    ${['7','8','9','/','4','5','6','*','1','2','3','-','0','C','=','+','sqrt','^','sin','cos','tan','log','PI','exp'].map(b => 
+                        `<button class="calc-btn" style="padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer; font-size:0.8em">${b}</button>`
                     ).join('')}
                 </div>
-            `, 400, 300, 'calc');
+            `, 400, 420, 'calc');
 
             let current = "";
             const display = win.querySelector(`#${winId}-display`);
@@ -768,9 +973,21 @@ const Apps = {
                 btn.onclick = () => {
                     const val = btn.textContent;
                     if (val === "=") {
-                        try { current = eval(current).toString(); } catch { current = "Error"; }
+                        try { 
+                            let expr = current.replace(/sqrt/g, 'Math.sqrt')
+                                              .replace(/\^/g, '**')
+                                              .replace(/sin/g, 'Math.sin')
+                                              .replace(/cos/g, 'Math.cos')
+                                              .replace(/tan/g, 'Math.tan')
+                                              .replace(/log/g, 'Math.log')
+                                              .replace(/PI/g, 'Math.PI')
+                                              .replace(/exp/g, 'Math.exp');
+                            current = eval(expr).toString(); 
+                        } catch { current = "Error"; }
                     } else if (val === "C") {
                         current = "";
+                    } else if (['sqrt','sin','cos','tan','log','exp'].includes(val)) {
+                        current += val + "(";
                     } else {
                         current += val;
                     }
@@ -779,17 +996,54 @@ const Apps = {
             });
         }
     },
+    calendar: {
+        title: "Calendar",
+        icon: "assets/folder.png",
+        launch: () => {
+            const winId = `cal-${Date.now()}`;
+            const now = new Date();
+            const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).getDay();
+            
+            let calHtml = `<div style="display:grid; grid-template-columns: repeat(7, 1fr); text-align:center; font-weight:bold; color:var(--accent-color)">`;
+            ['S','M','T','W','T','F','S'].forEach(d => calHtml += `<div>${d}</div>`);
+            calHtml += `</div><div style="display:grid; grid-template-columns: repeat(7, 1fr); text-align:center; gap:5px; margin-top:5px">`;
+            
+            for(let i=0; i<firstDay; i++) calHtml += `<div></div>`;
+            for(let d=1; d<=daysInMonth; d++) {
+                const isToday = d === now.getDate();
+                calHtml += `<div style="${isToday ? 'background:var(--accent-color); color:#000; font-weight:bold' : ''}; padding:5px; border:1px solid #333">${d}</div>`;
+            }
+            calHtml += `</div>`;
+
+            wm.createWindow("Calendar", `
+                <div style="padding:15px">
+                    <h2 style="text-align:center; margin-bottom:15px">${now.toLocaleString('default', { month: 'long' })} ${now.getFullYear()}</h2>
+                    ${calHtml}
+                </div>
+            `, 350, 400, 'calendar');
+        }
+    },
     settings: {
         title: "Settings",
         icon: "assets/settings.png",
         launch: () => {
             const winId = `settings-${Date.now()}`;
             const currentTheme = localStorage.getItem('apex_theme') || 'default';
+            const currentAccent = localStorage.getItem('apex_accent') || '#3d5afe';
             
-            wm.createWindow("Settings", `
-                <div style="padding:10px">
+            const win = wm.createWindow("Settings", `
+                <div style="padding:15px; height:100%; overflow-y:auto">
+                    <div style="margin-bottom:15px">
+                        <label style="display:block; margin-bottom:5px">User Profile</label>
+                        <div style="display:flex; align-items:center; gap:10px; background:rgba(0,0,0,0.2); padding:10px; border-radius:8px">
+                            <div style="width:40px; height:40px; background:var(--accent-color); border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold">A</div>
+                            <input type="text" id="${winId}-username" value="${localStorage.getItem('apex_user') || 'Apex User'}" style="background:transparent; border:none; color:white; outline:none; font-family:inherit">
+                        </div>
+                    </div>
+
                     <label>System Theme:</label>
-                    <select id="${winId}-theme" style="width:100%; margin-top:5px; padding:5px; background:#000; color:var(--text-color); border:1px solid var(--accent-color)">
+                    <select id="${winId}-theme" style="width:100%; margin-top:5px; padding:8px; background:#000; color:var(--text-color); border:1px solid var(--accent-color); border-radius:5px">
                         <option value="default" ${currentTheme === 'default' ? 'selected' : ''}>Matrix Green</option>
                         <option value="theme-cyberpunk" ${currentTheme === 'theme-cyberpunk' ? 'selected' : ''}>Cyberpunk Purple</option>
                         <option value="theme-light" ${currentTheme === 'theme-light' ? 'selected' : ''}>Light Mode</option>
@@ -797,23 +1051,39 @@ const Apps = {
                         <option value="theme-sleek" ${currentTheme === 'theme-sleek' ? 'selected' : ''}>Sleek UI</option>
                     </select>
 
-                    <div style="margin-top:10px">
-                        <label>Wallpaper (Sleek only):</label>
-                        <input type="text" id="${winId}-wp" placeholder="Image URL..." style="width:100%; margin-top:5px; padding:5px; background:#000; color:var(--text-color); border:1px solid var(--accent-color)" value="${localStorage.getItem('apex_wallpaper') || ''}">
+                    <div style="margin-top:15px">
+                        <label>Accent Color:</label>
+                        <input type="color" id="${winId}-accent" value="${currentAccent}" style="width:100%; height:30px; margin-top:5px; border:none; background:transparent">
                     </div>
 
-                    <div style="margin-top:10px">
+                    <div style="margin-top:15px">
+                        <label>Wallpaper (Sleek only):</label>
+                        <input type="text" id="${winId}-wp" placeholder="Image URL..." style="width:100%; margin-top:5px; padding:8px; background:#000; color:var(--text-color); border:1px solid var(--accent-color); border-radius:5px" value="${localStorage.getItem('apex_wallpaper') || ''}">
+                    </div>
+
+                    <div style="margin-top:15px; display:flex; flex-direction:column; gap:10px">
                         <label><input type="checkbox" id="${winId}-stats" ${localStorage.getItem('apex_show_stats') === 'true' ? 'checked' : ''}> Show RAM usage in taskbar</label>
+                        <label><input type="checkbox" id="${winId}-animations" ${localStorage.getItem('apex_animations') !== 'false' ? 'checked' : ''}> Enable system animations</label>
                     </div>
                     
-                    <div style="margin-top:20px; border-top:1px solid #333; padding-top:10px">
-                        <strong>ApexOS v1.3.0</strong><br>
-                        VFS Status: Online<br>
-                        Persistence: Enabled<br>
-                        <button id="${winId}-reset" style="margin-top:10px; padding:5px; background:#f44336; color:#fff; border:none; cursor:pointer; width:100%">Clear All Data (Reset)</button>
+                    <div style="margin-top:20px; border-top:1px solid #333; padding-top:15px">
+                        <button id="${winId}-lock" style="margin-bottom:10px; padding:8px; background:var(--accent-color); color:#fff; border:none; cursor:pointer; width:100%; border-radius:5px">Lock System (Win+L)</button>
+                        <button id="${winId}-reset" style="padding:8px; background:#f44336; color:#fff; border:none; cursor:pointer; width:100%; border-radius:5px">Factory Reset (Wipe Data)</button>
                     </div>
                 </div>
-            `, 400, 450, 'settings');
+            `, 400, 500, 'settings');
+
+            document.getElementById(`${winId}-username`).onchange = (e) => {
+                localStorage.setItem('apex_user', e.target.value);
+                System.notify(`Username changed to ${e.target.value}`);
+            };
+
+            document.getElementById(`${winId}-accent`).oninput = (e) => {
+                document.documentElement.style.setProperty('--accent-color', e.target.value);
+                localStorage.setItem('apex_accent', e.target.value);
+            };
+
+            document.getElementById(`${winId}-lock`).onclick = () => System.lockScreen();
 
             document.getElementById(`${winId}-reset`).onclick = () => {
                 if(confirm("This will wipe all your files and settings. You sure?")) {
@@ -826,12 +1096,7 @@ const Apps = {
                 const theme = e.target.value;
                 document.body.className = theme === 'default' ? '' : theme;
                 localStorage.setItem('apex_theme', theme);
-                if (theme === 'theme-sleek') {
-                    const savedWallpaper = localStorage.getItem('apex_wallpaper');
-                    if (savedWallpaper) document.body.style.backgroundImage = `url('${savedWallpaper}')`;
-                } else {
-                    document.body.style.backgroundImage = '';
-                }
+                System.notify(`Theme applied: ${theme}`);
             };
 
             document.getElementById(`${winId}-wp`).onchange = (e) => {
@@ -841,8 +1106,9 @@ const Apps = {
                 }
             };
 
-            document.getElementById(`${winId}-stats`).onchange = (e) => {
-                localStorage.setItem('apex_show_stats', e.target.checked);
+            document.getElementById(`${winId}-animations`).onchange = (e) => {
+                localStorage.setItem('apex_animations', e.target.checked);
+                System.notify(`Animations ${e.target.checked ? 'enabled' : 'disabled'}`);
             };
         }
     },
@@ -1241,21 +1507,246 @@ const Apps = {
             
             const winId = `editor-${Math.random().toString(36).substring(2, 9)}`;
             const win = wm.createWindow("ApexPad", `
-                <div style="margin-bottom:5px">Editing: <input type="text" id="${winId}-filename" value="${fileName}" style="background:transparent; border:none; color:var(--accent-color); font-family:inherit"></div>
-                <textarea id="${winId}-text" style="width:100%; height:350px; background:#000; color:var(--text-color); border:1px solid var(--accent-color); font-family:inherit; padding:10px; resize:none;">${content}</textarea>
-                <div style="text-align:right; margin-top:10px">
-                    <button id="${winId}-save" style="padding:8px 20px; background:var(--accent-color); color:#000; border:none; cursor:pointer; font-weight:bold; border-radius:4px">Save to VFS</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px">
+                    <div style="font-size:0.8em">File: <input type="text" id="${winId}-filename" value="${fileName}" style="background:transparent; border:none; color:var(--accent-color); font-family:inherit; width:150px"></div>
+                    <div style="display:flex; gap:10px">
+                        <select id="${winId}-fs" style="background:#222; color:white; border:1px solid #444; font-size:0.8em">
+                            <option value="12px">Small</option>
+                            <option value="16px" selected>Normal</option>
+                            <option value="20px">Large</option>
+                            <option value="24px">X-Large</option>
+                        </select>
+                        <button id="${winId}-dark" style="font-size:0.8em; cursor:pointer">🌓</button>
+                    </div>
                 </div>
-            `, 500, 500, 'editor');
+                <textarea id="${winId}-text" style="width:100%; height:320px; background:#000; color:var(--text-color); border:1px solid var(--accent-color); font-family:inherit; padding:10px; resize:none; font-size:16px">${content}</textarea>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px">
+                    <div id="${winId}-stats" style="font-size:0.8em; opacity:0.7">Words: 0 | Chars: 0</div>
+                    <button id="${winId}-save" style="padding:8px 20px; background:var(--accent-color); color:#000; border:none; cursor:pointer; font-weight:bold; border-radius:4px">Save File</button>
+                </div>
+            `, 600, 480, 'editor');
 
-            document.getElementById(`${winId}-save`).onclick = () => {
-                const name = document.getElementById(`${winId}-filename`).value;
-                const text = document.getElementById(`${winId}-text`).value;
+            const textarea = win.querySelector(`#${winId}-text`);
+            const stats = win.querySelector(`#${winId}-stats`);
+
+            const updateStats = () => {
+                const text = textarea.value.trim();
+                const words = text ? text.split(/\s+/).length : 0;
+                const chars = text.length;
+                stats.textContent = `Words: ${words} | Chars: ${chars}`;
+            };
+
+            textarea.oninput = updateStats;
+            updateStats();
+
+            win.querySelector(`#${winId}-fs`).onchange = (e) => {
+                textarea.style.fontSize = e.target.value;
+            };
+
+            win.querySelector(`#${winId}-dark`).onclick = () => {
+                const isDark = textarea.style.background === 'rgb(255, 255, 255)';
+                textarea.style.background = isDark ? '#000' : '#fff';
+                textarea.style.color = isDark ? 'var(--text-color)' : '#000';
+            };
+
+            win.querySelector(`#${winId}-save`).onclick = () => {
+                const name = win.querySelector(`#${winId}-filename`).value;
+                const text = textarea.value;
                 Kernel.saveFile(name, text);
-                alert(`Saved ${name} to ApexOS storage!`);
+                System.notify(`Saved ${name}`, 'success');
             };
         }
-    }
+    },
+    stopwatch: {
+        title: "Stopwatch",
+        icon: "assets/folder.png",
+        launch: () => {
+            const winId = `sw-${Date.now()}`;
+            wm.createWindow("Stopwatch", `
+                <div style="padding:20px; text-align:center">
+                    <div id="${winId}-display" style="font-size:3em; margin-bottom:20px; font-family:monospace">00:00.00</div>
+                    <div style="display:flex; justify-content:center; gap:10px">
+                        <button id="${winId}-start" style="padding:10px 20px; background:var(--accent-color); color:white; border:none; cursor:pointer; border-radius:5px">Start</button>
+                        <button id="${winId}-stop" style="padding:10px 20px; background:#f44336; color:white; border:none; cursor:pointer; border-radius:5px">Stop</button>
+                        <button id="${winId}-reset" style="padding:10px 20px; background:#666; color:white; border:none; cursor:pointer; border-radius:5px">Reset</button>
+                    </div>
+                </div>
+            `, 300, 250, 'stopwatch');
+
+            let startTime, timer;
+            let elapsed = 0;
+
+            const format = (ms) => {
+                const m = Math.floor(ms / 60000);
+                const s = Math.floor((ms % 60000) / 1000);
+                const msPart = Math.floor((ms % 1000) / 10);
+                return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${msPart.toString().padStart(2, '0')}`;
+            };
+
+            document.getElementById(`${winId}-start`).onclick = () => {
+                if (timer) return;
+                startTime = Date.now() - elapsed;
+                timer = setInterval(() => {
+                    elapsed = Date.now() - startTime;
+                    document.getElementById(`${winId}-display`).textContent = format(elapsed);
+                }, 10);
+            };
+
+            document.getElementById(`${winId}-stop`).onclick = () => {
+                clearInterval(timer);
+                timer = null;
+            };
+
+            document.getElementById(`${winId}-reset`).onclick = () => {
+                clearInterval(timer);
+                timer = null;
+                elapsed = 0;
+                document.getElementById(`${winId}-display`).textContent = "00:00.00";
+            };
+        }
+    },
+    imageviewer: {
+        title: "Image Viewer",
+        icon: "assets/folder.png",
+        launch: (src = null) => {
+            const winId = `img-${Date.now()}`;
+            wm.createWindow("Image Viewer", `
+                <div style="padding:10px; display:flex; flex-direction:column; height:100%">
+                    <div style="margin-bottom:10px; display:flex; gap:5px">
+                        <input type="text" id="${winId}-url" placeholder="Paste Image URL..." style="flex:1; background:#111; border:1px solid #444; color:white; padding:5px" value="${src || ''}">
+                        <button id="${winId}-load" style="background:var(--accent-color); border:none; padding:5px 10px; cursor:pointer">View</button>
+                    </div>
+                    <div id="${winId}-canvas" style="flex:1; background:#222; display:flex; align-items:center; justify-content:center; overflow:auto; border-radius:5px">
+                        ${src ? `<img src="${src}" style="max-width:100%; max-height:100%">` : '<p style="opacity:0.5">No image loaded</p>'}
+                    </div>
+                </div>
+            `, 500, 450, 'imageviewer');
+
+            document.getElementById(`${winId}-load`).onclick = () => {
+                const url = document.getElementById(`${winId}-url`).value;
+                if (url) {
+                    document.getElementById(`${winId}-canvas`).innerHTML = `<img src="${url}" style="max-width:100%; max-height:100%">`;
+                }
+            };
+        }
+    },
+    unitconv: {
+        title: "Unit Converter",
+        icon: "assets/calculator.png",
+        launch: () => {
+            const winId = `conv-${Date.now()}`;
+            wm.createWindow("Unit Converter", `
+                <div style="padding:15px">
+                    <div style="margin-bottom:10px">
+                        <label>Length:</label>
+                        <div style="display:flex; gap:5px; margin-top:5px">
+                            <input type="number" id="${winId}-m" placeholder="Meters" style="width:100%; padding:5px; background:#111; color:white; border:1px solid #444">
+                            <span style="align-self:center">=</span>
+                            <input type="number" id="${winId}-ft" placeholder="Feet" style="width:100%; padding:5px; background:#111; color:white; border:1px solid #444">
+                        </div>
+                    </div>
+                    <div style="margin-bottom:10px">
+                        <label>Weight:</label>
+                        <div style="display:flex; gap:5px; margin-top:5px">
+                            <input type="number" id="${winId}-kg" placeholder="KG" style="width:100%; padding:5px; background:#111; color:white; border:1px solid #444">
+                            <span style="align-self:center">=</span>
+                            <input type="number" id="${winId}-lb" placeholder="LB" style="width:100%; padding:5px; background:#111; color:white; border:1px solid #444">
+                        </div>
+                    </div>
+                    <div style="margin-bottom:10px">
+                        <label>Temp:</label>
+                        <div style="display:flex; gap:5px; margin-top:5px">
+                            <input type="number" id="${winId}-c" placeholder="°C" style="width:100%; padding:5px; background:#111; color:white; border:1px solid #444">
+                            <span style="align-self:center">=</span>
+                            <input type="number" id="${winId}-f" placeholder="°F" style="width:100%; padding:5px; background:#111; color:white; border:1px solid #444">
+                        </div>
+                    </div>
+                </div>
+            `, 350, 300, 'unitconv');
+
+            const m = document.getElementById(`${winId}-m`), ft = document.getElementById(`${winId}-ft`);
+            m.oninput = () => ft.value = (m.value * 3.28084).toFixed(2);
+            ft.oninput = () => m.value = (ft.value / 3.28084).toFixed(2);
+
+            const kg = document.getElementById(`${winId}-kg`), lb = document.getElementById(`${winId}-lb`);
+            kg.oninput = () => lb.value = (kg.value * 2.20462).toFixed(2);
+            lb.oninput = () => kg.value = (lb.value / 2.20462).toFixed(2);
+
+            const c = document.getElementById(`${winId}-c`), f = document.getElementById(`${winId}-f`);
+            c.oninput = () => f.value = (c.value * 9/5 + 32).toFixed(2);
+            f.oninput = () => c.value = ((f.value - 32) * 5/9).toFixed(2);
+        }
+    },
+    help: {
+        title: "Help Center",
+        icon: "assets/settings.png",
+        launch: () => {
+            wm.createWindow("Help Center", `
+                <div style="padding:15px; height:100%; overflow-y:auto">
+                    <h2 style="color:var(--accent-color)">Welcome to ApexOS Help</h2>
+                    <div style="margin-top:15px">
+                        <h3>Keyboard Shortcuts</h3>
+                        <ul style="padding-left:20px">
+                            <li><b>Win + L</b>: Lock Screen</li>
+                            <li><b>Win + R</b>: Run Dialog</li>
+                            <li><b>Win + D</b>: Show Desktop</li>
+                            <li><b>Alt + T</b>: Open Terminal</li>
+                            <li><b>Esc</b>: Close Menus</li>
+                        </ul>
+                    </div>
+                    <div style="margin-top:15px">
+                        <h3>Terminal Tips</h3>
+                        <p>Type <code>help</code> for a list of commands. Try <code>neofetch</code> or <code>matrix</code>!</p>
+                    </div>
+                    <div style="margin-top:15px">
+                        <h3>Personalization</h3>
+                        <p>Go to Settings to change themes, accent colors, and wallpapers.</p>
+                    </div>
+                </div>
+            `, 450, 400, 'help');
+        }
+    },
+    appstore: {
+        title: "App Store",
+        icon: "assets/folder.png",
+        launch: () => {
+            wm.createWindow("App Store", `
+                <div style="padding:15px">
+                    <h2 style="color:var(--accent-color)">Featured Apps</h2>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:15px">
+                        <div style="padding:10px; border:1px solid #333; text-align:center">
+                            <div style="font-size:2em">🎮</div>
+                            <div>Doom Clone</div>
+                            <button style="margin-top:5px; background:var(--accent-color); border:none; padding:5px; cursor:pointer" onclick="System.notify('Installation failed: Not enough disk space', 'error')">Install</button>
+                        </div>
+                        <div style="padding:10px; border:1px solid #333; text-align:center">
+                            <div style="font-size:2em">📧</div>
+                            <div>Apex Mail</div>
+                            <button style="margin-top:5px; background:var(--accent-color); border:none; padding:5px; cursor:pointer" onclick="System.notify('Connecting to server...', 'info')">Install</button>
+                        </div>
+                    </div>
+                </div>
+            `, 400, 350, 'appstore');
+        }
+    },
+    media: {
+        title: "Media Player",
+        icon: "assets/folder.png",
+        launch: () => {
+            wm.createWindow("Media Player", `
+                <div style="padding:20px; text-align:center; background:#000; height:100%; display:flex; flex-direction:column; justify-content:center">
+                    <div style="font-size:4em; margin-bottom:20px">🎵</div>
+                    <h3 style="color:var(--accent-color)">Now Playing: Apex Waves</h3>
+                    <div style="margin:20px 0; background:#333; height:5px; position:relative">
+                        <div style="background:var(--accent-color); width:40%; height:100%"></div>
+                    </div>
+                    <div style="display:flex; justify-content:center; gap:20px; font-size:1.5em; cursor:pointer">
+                        <span>⏮️</span> <span>⏸️</span> <span>⏭️</span>
+                    </div>
+                </div>
+            `, 400, 320, 'media');
+        }
+    },
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1314,12 +1805,13 @@ document.addEventListener('DOMContentLoaded', () => {
         item.onclick = () => {
             const appName = item.getAttribute('data-app');
             if (Apps[appName]) Apps[appName].launch();
+            startMenu.classList.add('hidden');
         };
     });
 
     // Desktop Icons
     const desktopIcons = document.getElementById('desktop-icons');
-    const appsWithIcons = ["terminal", "browser", "explorer", "editor", "notes", "calc", "clock", "settings", "snake", "paint", "weather", "sysinfo"];
+    const appsWithIcons = ["terminal", "browser", "explorer", "editor", "notes", "calc", "clock", "settings", "snake", "paint", "weather", "sysinfo", "imageviewer", "stopwatch", "unitconv", "help"];
     
     const refreshDesktopIcons = () => {
         desktopIcons.innerHTML = '';
@@ -1328,6 +1820,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const icon = document.createElement('div');
             icon.className = 'desktop-icon';
             icon.setAttribute('data-app', appKey);
+            icon.style.animationDelay = `${index * 50}ms`;
+            icon.title = `Launch ${app.title}`;
             
             // Grid placement logic for first-time or reset icons
             const savedPos = localStorage.getItem(`icon-pos-${appKey}`);

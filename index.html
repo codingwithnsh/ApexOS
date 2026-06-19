@@ -13,10 +13,19 @@
     </div>
 
     <main id="desktop" class="hidden">
+        <div id="lock-screen" class="hidden">
+            <div id="lock-content">
+                <div id="lock-time">00:00</div>
+                <div id="lock-date">Friday, June 19</div>
+                <input type="password" id="lock-pass" placeholder="Enter Password (hint: apex)">
+                <div id="lock-msg">Press Enter to Unlock</div>
+            </div>
+        </div>
+
         <nav id="taskbar">
             <div class="start-btn">APEX</div>
             <div id="active-apps"></div>
-            <div class="taskbar-status">
+            <div class="taskbar-status" onclick="System.toggleControlCenter()">
                 <span id="bat-status"></span>
                 <span id="sys-stats"></span>
             </div>
@@ -31,6 +40,8 @@
                 <input type="text" id="start-search" placeholder="Search apps...">
             </div>
             <div id="start-menu-items">
+                <div class="start-menu-item" data-app="appstore">App Store</div>
+                <div class="start-menu-item" data-app="media">Media Player</div>
                 <div class="start-menu-item" data-app="terminal">Terminal</div>
                 <div class="start-menu-item" data-app="browser">ApexBrowser</div>
                 <div class="start-menu-item" data-app="explorer">File Explorer</div>
@@ -45,14 +56,53 @@
                 <div class="start-menu-item" data-app="paint">ApexPaint</div>
                 <div class="start-menu-item" data-app="snake">Snake Retro</div>
                 <div class="start-menu-item" data-app="weather">Weather</div>
+                <div class="start-menu-item" data-app="imageviewer">Image Viewer</div>
+                <div class="start-menu-item" data-app="stopwatch">Stopwatch</div>
+                <div class="start-menu-item" data-app="unitconv">Unit Converter</div>
+                <div class="start-menu-item" data-app="help">Help Center</div>
                 <div class="start-menu-item" data-app="about">About ApexOS</div>
+            </div>
+            <div class="start-menu-footer">
+                <div class="user-info">
+                    <div class="user-avatar">A</div>
+                    <span id="display-username">Apex User</span>
+                </div>
+                <div class="power-btn" onclick="System.togglePowerMenu()">⏻</div>
+            </div>
+            <div id="power-menu" class="hidden">
+                <div class="power-item" onclick="location.reload()">Restart</div>
+                <div class="power-item" onclick="System.lockScreen()">Lock</div>
+                <div class="power-item" onclick="System.notify('Shutting down...', 'info'); setTimeout(() => document.body.innerHTML = '', 1000)">Shut Down</div>
             </div>
         </div>
 
         <div id="window-container"></div>
+        <div id="notification-container"></div>
+        <div id="control-center" class="hidden">
+            <div class="cc-header">Control Center</div>
+            <div class="cc-grid">
+                <div class="cc-tile" onclick="System.toggleWifi()"><span class="icon">🌐</span><span>WiFi</span></div>
+                <div class="cc-tile" onclick="System.toggleBluetooth()"><span class="icon">🦷</span><span>Bluetooth</span></div>
+                <div class="cc-tile" onclick="System.toggleNightLight()"><span class="icon">🌙</span><span>Night Light</span></div>
+                <div class="cc-tile" onclick="System.toggleAirplane()"><span class="icon">✈️</span><span>Airplane</span></div>
+            </div>
+            <div class="cc-sliders">
+                <div class="cc-slider-group">
+                    <span>🔆</span>
+                    <input type="range" id="brightness-slider" min="10" max="100" value="100" oninput="System.setBrightness(this.value)">
+                </div>
+                <div class="cc-slider-group">
+                    <span>🔊</span>
+                    <input type="range" id="volume-slider" min="0" max="100" value="80" oninput="System.setVolume(this.value)">
+                </div>
+            </div>
+        </div>
         <div id="context-menu" class="hidden">
             <div class="ctx-item" onclick="Apps.terminal.launch()">Open Terminal</div>
             <div class="ctx-item" onclick="Apps.sysmon.launch()">System Monitor</div>
+            <hr style="border:0; border-top:1px solid #333">
+            <div class="ctx-item" onclick="Kernel.makeDir('New Folder'); System.refreshDesktopIcons()">New Folder</div>
+            <div class="ctx-item" onclick="Kernel.saveFile('newfile.txt', ''); System.refreshDesktopIcons()">New File</div>
             <hr style="border:0; border-top:1px solid #333">
             <div class="ctx-item" onclick="System.sortIcons()">Sort Icons</div>
             <div class="ctx-item" onclick="location.reload()">Refresh System</div>
