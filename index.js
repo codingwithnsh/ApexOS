@@ -215,19 +215,29 @@ class WindowManager {
         });
     }
 
-    makeDraggable(element) {
-        const header = element.querySelector('.window-header');
+    makeDraggable(element, isIcon = false) {
+        const handle = isIcon ? element : element.querySelector('.window-header');
         let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
 
-        header.onmousedown = (e) => {
+        handle.onmousedown = (e) => {
+            if (e.button !== 0) return; // Only left click
             e.preventDefault();
+            
+            // For icons, we might want to bring them to front or just handle the drag
+            if (isIcon) {
+                element.style.position = 'absolute';
+                element.style.zIndex = 1000;
+            } else {
+                element.style.zIndex = this.zIndexCounter++;
+            }
+
             pos3 = e.clientX;
             pos4 = e.clientY;
             document.onmouseup = closeDragElement;
             document.onmousemove = elementDrag;
         };
 
-        function elementDrag(e) {
+        const elementDrag = (e) => {
             e.preventDefault();
             pos1 = pos3 - e.clientX;
             pos2 = pos4 - e.clientY;
@@ -235,11 +245,20 @@ class WindowManager {
             pos4 = e.clientY;
             element.style.top = (element.offsetTop - pos2) + "px";
             element.style.left = (element.offsetLeft - pos1) + "px";
-        }
+        };
 
         function closeDragElement() {
             document.onmouseup = null;
             document.onmousemove = null;
+            if (isIcon) {
+                element.style.zIndex = 1; // Reset z-index after drag
+                // Save position if we had a persistence system
+                const appKey = element.getAttribute('data-app');
+                localStorage.setItem(`icon-pos-${appKey}`, JSON.stringify({
+                    top: element.style.top,
+                    left: element.style.left
+                }));
+            }
         }
     }
 }
@@ -571,12 +590,33 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!app.icon) return; // Skip apps without icons for desktop
         const icon = document.createElement('div');
         icon.className = 'desktop-icon';
+        icon.setAttribute('data-app', appKey);
+        
+        // Restore position if saved
+        const savedPos = localStorage.getItem(`icon-pos-${appKey}`);
+        if (savedPos) {
+            const pos = JSON.parse(savedPos);
+            icon.style.position = 'absolute';
+            icon.style.top = pos.top;
+            icon.style.left = pos.left;
+        }
+
         const iconHtml = app.icon.endsWith('.png') ? `<img src="${app.icon}" alt="${app.title}">` : app.icon;
         icon.innerHTML = `
             <div class="icon-graphic">${iconHtml}</div>
             <div class="icon-label">${app.title}</div>
         `;
-        icon.onclick = () => app.launch();
+        
+        let dragStarted = false;
+        icon.addEventListener('mousedown', () => { dragStarted = false; });
+        icon.addEventListener('mousemove', () => { dragStarted = true; });
+        icon.addEventListener('click', (e) => {
+            if (!dragStarted) {
+                app.launch();
+            }
+        });
+
+        wm.makeDraggable(icon, true);
         desktopIcons.appendChild(icon);
     });
 

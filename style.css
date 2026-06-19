@@ -221,17 +221,25 @@ body {
     position: absolute;
     top: 20px;
     left: 20px;
+    right: 20px;
+    bottom: 60px;
     display: flex;
     flex-direction: column;
+    flex-wrap: wrap;
+    align-content: flex-start;
     gap: 20px;
     z-index: 1;
+    pointer-events: none; /* Allow clicking through the container to windows if needed, but we need icons to be clickable */
 }
 
 .desktop-icon {
-    width: 64px;
+    width: 80px;
     text-align: center;
     cursor: pointer;
     padding: 5px;
+    pointer-events: auto; /* Re-enable for icons */
+    user-select: none;
+    position: relative; /* Default, will be switched to absolute when dragged */
 }
 
 .desktop-icon:hover {
