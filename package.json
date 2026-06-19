@@ -1,0 +1,12 @@
+{
+  "name": "ApexOS",
+  "version": "1.0.0",
+  "description": "A retro-modern WebOS experience.",
+  "homepage": "https://nshettigar.me/WebOS/",
+  "main": "index.js",
+  "scripts": {
+    "start": "npx serve .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "private": true
+}
