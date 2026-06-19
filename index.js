@@ -345,8 +345,10 @@ const Apps = {
                         <option value="theme-light" ${currentTheme === 'theme-light' ? 'selected' : ''}>Light Mode</option>
                         <option value="theme-classic" ${currentTheme === 'theme-classic' ? 'selected' : ''}>Classic OS</option>
                     </select>
-                    <div style="margin-top:20px; font-size:0.8em; opacity:0.7">
-                        ApexOS v0.1.0<br>
+                    
+                    <div style="margin-top:20px; border-top:1px solid #333; padding-top:10px">
+                        <strong>ApexOS v1.0.0</strong><br>
+                        Created by: <a href="https://nshettigar.me/" target="_blank" style="color:var(--text-color)">Naman Shettigar</a><br>
                         VFS Status: Online<br>
                         Persistence: Enabled
                     </div>
@@ -413,6 +415,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const desktopIcons = document.getElementById('desktop-icons');
     Object.keys(Apps).forEach(appKey => {
         const app = Apps[appKey];
+        if (!app.icon) return; // Skip apps without icons for desktop
         const icon = document.createElement('div');
         icon.className = 'desktop-icon';
         icon.innerHTML = `
@@ -423,13 +426,21 @@ document.addEventListener('DOMContentLoaded', () => {
         desktopIcons.appendChild(icon);
     });
 
-    // Just for fun, let's open a "Readme" after boot
     setTimeout(() => {
+        if (sessionStorage.getItem('apex_booted_once')) return;
+        
         wm.createWindow('Welcome', `
-            <h3>Welcome to ApexOS</h3>
-            <p>This is a human-centric experiment in minimalism.</p>
-            <br>
-            <p>Click the <b>APEX</b> button or double-click icons to start.</p>
+            <div style="text-align:center; padding:10px;">
+                <h2 style="color:var(--text-color)">🚀 ApexOS v1.0.0</h2>
+                <p>Welcome, <b>Naman Shettigar</b>.</p>
+                <hr style="border:0; border-top:1px solid #333; margin:15px 0;">
+                <p>This is a functional WebOS environment built with a "human" touch.</p>
+                <br>
+                <p>Visit the creator: <a href="https://nshettigar.me" target="_blank" style="color:var(--text-color)">nshettigar.me</a></p>
+                <br>
+                <button onclick="this.closest('.window').querySelector('.close-btn').click()" style="padding:10px 20px; background:var(--accent-color); color:#000; border:none; cursor:pointer; font-weight:bold;">GET STARTED</button>
+            </div>
         `);
+        sessionStorage.setItem('apex_booted_once', 'true');
     }, 5500);
 });
