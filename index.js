@@ -250,7 +250,7 @@ let wm;
 const Apps = {
     terminal: {
         title: "Apex Terminal",
-        icon: "",
+        icon: "assets/terminal.png",
         launch: () => {
             const id = `term-${Date.now()}`;
             wm.createWindow("Terminal", `
@@ -307,7 +307,8 @@ const Apps = {
                             "matrix": "default",
                             "cyberpunk": "theme-cyberpunk",
                             "light": "theme-light",
-                            "classic": "theme-classic"
+                            "classic": "theme-classic",
+                            "sleek": "theme-sleek"
                         };
                         if (themes[theme]) {
                             const target = themes[theme];
@@ -315,7 +316,7 @@ const Apps = {
                             localStorage.setItem('apex_theme', target);
                             output.innerHTML += `<div>Theme changed to ${theme}.</div>`;
                         } else {
-                            output.innerHTML += `<div>Available themes: matrix, cyberpunk, light, classic</div>`;
+                            output.innerHTML += `<div>Available themes: matrix, cyberpunk, light, classic, sleek</div>`;
                         }
                     } else if (cmd !== "") {
                         output.innerHTML += `<div>Unknown command: ${cmd}</div>`;
@@ -329,7 +330,7 @@ const Apps = {
     },
     explorer: {
         title: "File Explorer",
-        icon: "",
+        icon: "assets/folder.png",
         launch: () => {
             const winId = `explorer-${Math.random().toString(36).substring(2, 9)}`;
             
@@ -376,7 +377,7 @@ const Apps = {
     },
     calc: {
         title: "Calculator",
-        icon: "󰃬",
+        icon: "assets/calculator.png",
         launch: () => {
             const winId = `calc-${Math.random().toString(36).substring(2, 9)}`;
             const win = wm.createWindow("Calculator", `
@@ -409,7 +410,7 @@ const Apps = {
     },
     settings: {
         title: "Settings",
-        icon: "⚙️",
+        icon: "assets/settings.png",
         launch: () => {
             const winId = `settings-${Date.now()}`;
             const currentTheme = localStorage.getItem('apex_theme') || 'default';
@@ -422,6 +423,7 @@ const Apps = {
                         <option value="theme-cyberpunk" ${currentTheme === 'theme-cyberpunk' ? 'selected' : ''}>Cyberpunk Purple</option>
                         <option value="theme-light" ${currentTheme === 'theme-light' ? 'selected' : ''}>Light Mode</option>
                         <option value="theme-classic" ${currentTheme === 'theme-classic' ? 'selected' : ''}>Classic OS</option>
+                        <option value="theme-sleek" ${currentTheme === 'theme-sleek' ? 'selected' : ''}>Sleek UI</option>
                     </select>
                     
                     <div style="margin-top:20px; border-top:1px solid #333; padding-top:10px">
@@ -442,7 +444,7 @@ const Apps = {
     },
     sysmon: {
         title: "System Monitor",
-        icon: "📊",
+        icon: "assets/folder.png",
         launch: () => {
             const winId = `sysmon-${Math.random().toString(36).substring(2, 9)}`;
             wm.createWindow("System Monitor", `
@@ -479,7 +481,7 @@ const Apps = {
     },
     about: {
         title: "About",
-        icon: "ℹ️",
+        icon: "assets/folder.png",
         launch: () => {
             const win = wm.createWindow("About ApexOS", `
                 <div style="text-align:center; padding:10px;">
@@ -500,7 +502,7 @@ const Apps = {
     },
     editor: {
         title: "ApexPad",
-        icon: "📝",
+        icon: "assets/apexpad.png",
         launch: (initialFile = null) => {
             const fileName = initialFile || "untitled.txt";
             const content = initialFile ? Kernel.getFile(fileName) : "";
@@ -569,8 +571,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!app.icon) return; // Skip apps without icons for desktop
         const icon = document.createElement('div');
         icon.className = 'desktop-icon';
+        const iconHtml = app.icon.endsWith('.png') ? `<img src="${app.icon}" alt="${app.title}">` : app.icon;
         icon.innerHTML = `
-            <div class="icon-graphic">${app.icon}</div>
+            <div class="icon-graphic">${iconHtml}</div>
             <div class="icon-label">${app.title}</div>
         `;
         icon.onclick = () => app.launch();

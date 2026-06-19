@@ -34,6 +34,67 @@ body.theme-classic {
     --font-main: 'MS Sans Serif', Arial, sans-serif;
 }
 
+body.theme-sleek {
+    --bg-color: #121212;
+    --text-color: #e0e0e0;
+    --accent-color: #3d5afe;
+    --window-bg: rgba(30, 30, 30, 0.85);
+    --taskbar-bg: rgba(20, 20, 20, 0.9);
+    --font-main: 'Inter', 'Segoe UI', Roboto, sans-serif;
+    background: url('assets/background.png') no-repeat center center fixed;
+    background-size: cover;
+}
+
+body.theme-sleek .window {
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    overflow: hidden;
+}
+
+body.theme-sleek .window-header {
+    background: rgba(61, 90, 254, 0.8);
+    color: #fff;
+    padding: 8px 12px;
+}
+
+body.theme-sleek .start-btn {
+    border-radius: 5px;
+    background: var(--accent-color);
+    color: #fff;
+    border: none;
+    transition: transform 0.2s;
+}
+
+body.theme-sleek .start-btn:hover {
+    transform: scale(1.05);
+}
+
+body.theme-sleek .taskbar-item {
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+body.theme-sleek #start-menu {
+    backdrop-filter: blur(15px);
+    background: rgba(20, 20, 20, 0.8);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 10px;
+}
+
+body.theme-sleek .desktop-icon {
+    transition: transform 0.2s, background 0.2s;
+    border-radius: 10px;
+}
+
+body.theme-sleek .desktop-icon:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-5px);
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -177,9 +238,10 @@ body {
     background: rgba(0, 255, 65, 0.1);
 }
 
-.icon-graphic {
-    font-size: 2em;
-    margin-bottom: 5px;
+.icon-graphic img {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
 }
 
 .icon-label {
