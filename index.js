@@ -221,7 +221,6 @@ class WindowManager {
 
         handle.onmousedown = (e) => {
             if (e.button !== 0) return; // Only left click
-            e.preventDefault();
             
             // For icons, we might want to bring them to front or just handle the drag
             if (isIcon) {
@@ -229,11 +228,24 @@ class WindowManager {
                 element.style.zIndex = 1000;
             } else {
                 element.style.zIndex = this.zIndexCounter++;
+                e.preventDefault(); // Only prevent default for windows to avoid text selection
             }
 
             pos3 = e.clientX;
             pos4 = e.clientY;
-            document.onmouseup = closeDragElement;
+            document.onmouseup = () => {
+                document.onmouseup = null;
+                document.onmousemove = null;
+                if (isIcon) {
+                    element.style.zIndex = 1; // Reset z-index after drag
+                    // Save position if we had a persistence system
+                    const appKey = element.getAttribute('data-app');
+                    localStorage.setItem(`icon-pos-${appKey}`, JSON.stringify({
+                        top: element.style.top,
+                        left: element.style.left
+                    }));
+                }
+            };
             document.onmousemove = elementDrag;
         };
 
@@ -246,20 +258,6 @@ class WindowManager {
             element.style.top = (element.offsetTop - pos2) + "px";
             element.style.left = (element.offsetLeft - pos1) + "px";
         };
-
-        function closeDragElement() {
-            document.onmouseup = null;
-            document.onmousemove = null;
-            if (isIcon) {
-                element.style.zIndex = 1; // Reset z-index after drag
-                // Save position if we had a persistence system
-                const appKey = element.getAttribute('data-app');
-                localStorage.setItem(`icon-pos-${appKey}`, JSON.stringify({
-                    top: element.style.top,
-                    left: element.style.left
-                }));
-            }
-        }
     }
 }
 
@@ -601,15 +599,24 @@ document.addEventListener('DOMContentLoaded', () => {
             icon.style.left = pos.left;
         }
 
-        const iconHtml = app.icon.endsWith('.png') ? `<img src="${app.icon}" alt="${app.title}">` : app.icon;
+        const iconHtml = app.icon.endsWith('.png') ? `<img src="${app.icon}" alt="${app.title}" style="pointer-events:none">` : app.icon;
         icon.innerHTML = `
             <div class="icon-graphic">${iconHtml}</div>
             <div class="icon-label">${app.title}</div>
         `;
         
+        let startX, startY;
         let dragStarted = false;
-        icon.addEventListener('mousedown', () => { dragStarted = false; });
-        icon.addEventListener('mousemove', () => { dragStarted = true; });
+        icon.addEventListener('mousedown', (e) => {
+            startX = e.clientX;
+            startY = e.clientY;
+            dragStarted = false;
+        });
+        icon.addEventListener('mousemove', (e) => {
+            if (Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5) {
+                dragStarted = true;
+            }
+        });
         icon.addEventListener('click', (e) => {
             if (!dragStarted) {
                 app.launch();
