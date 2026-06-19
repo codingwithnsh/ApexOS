@@ -2,7 +2,7 @@
   "name": "ApexOS",
   "version": "1.0.0",
   "description": "A retro-modern WebOS experience.",
-  "homepage": "https://nshettigar.me/WebOS/",
+  "homepage": "https://apexos.nshettigar.me/",
   "main": "index.js",
   "scripts": {
     "start": "npx serve .",

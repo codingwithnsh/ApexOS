@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ApexOS | Retro-Modern WebOS</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
 </head>
 <body class="theme-sleek">
     <div id="boot-screen">
@@ -40,32 +41,25 @@
                 <input type="text" id="start-search" placeholder="Search apps...">
             </div>
             <div id="start-menu-items">
-                <div class="start-menu-item" data-app="appstore">App Store</div>
-                <div class="start-menu-item" data-app="media">Media Player</div>
                 <div class="start-menu-item" data-app="terminal">Terminal</div>
                 <div class="start-menu-item" data-app="browser">ApexBrowser</div>
                 <div class="start-menu-item" data-app="explorer">File Explorer</div>
-                <div class="start-menu-item" data-app="editor">Text Editor</div>
+                <div class="start-menu-item" data-app="editor">ApexPad</div>
                 <div class="start-menu-item" data-app="notes">Sticky Notes</div>
                 <div class="start-menu-item" data-app="calc">Calculator</div>
-                <div class="start-menu-item" data-app="clock">Clock & Timer</div>
-                <div class="start-menu-item" data-app="sysmon">System Monitor</div>
+                <div class="start-menu-item" data-app="clock">Clock</div>
+                <div class="start-menu-item" data-app="media">Music Player</div>
                 <div class="start-menu-item" data-app="settings">Settings</div>
-                <div class="start-menu-item" data-app="sysinfo">System Info</div>
-                <div class="start-menu-item" data-app="taskmgr">Task Manager</div>
+                <div class="start-menu-item" data-app="weather">Weather</div>
                 <div class="start-menu-item" data-app="paint">ApexPaint</div>
                 <div class="start-menu-item" data-app="snake">Snake Retro</div>
-                <div class="start-menu-item" data-app="weather">Weather</div>
-                <div class="start-menu-item" data-app="imageviewer">Image Viewer</div>
-                <div class="start-menu-item" data-app="stopwatch">Stopwatch</div>
-                <div class="start-menu-item" data-app="unitconv">Unit Converter</div>
-                <div class="start-menu-item" data-app="help">Help Center</div>
-                <div class="start-menu-item" data-app="about">About ApexOS</div>
+                <div class="start-menu-item" data-app="appstore">App Store</div>
+                <div class="start-menu-item" data-app="quotes">Daily Quotes</div>
             </div>
             <div class="start-menu-footer">
                 <div class="user-info">
                     <div class="user-avatar">A</div>
-                    <span id="display-username">Apex User</span>
+                    <span>Apex User</span>
                 </div>
                 <div class="power-btn" onclick="System.togglePowerMenu()">⏻</div>
             </div>
@@ -104,6 +98,7 @@
             <div class="ctx-item" onclick="Kernel.makeDir('New Folder'); System.refreshDesktopIcons()">New Folder</div>
             <div class="ctx-item" onclick="Kernel.saveFile('newfile.txt', ''); System.refreshDesktopIcons()">New File</div>
             <hr style="border:0; border-top:1px solid #333">
+            <div class="ctx-item" onclick="Apps.settings.launch('personal')">Change Wallpaper</div>
             <div class="ctx-item" onclick="System.sortIcons()">Sort Icons</div>
             <div class="ctx-item" onclick="location.reload()">Refresh System</div>
         </div>

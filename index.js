@@ -9,9 +9,6 @@
  */
 
 // --- Virtual File System (VFS) ---
-// Just a simple nested object for now. 
-// Note to self: maybe move this to a more robust structure later, 
-// but for a demo, this works great.
 let VFS = {
     "/": {
         "home": {
@@ -26,23 +23,66 @@ let VFS = {
     }
 };
 
-// --- Storage Helper ---
+const DB_NAME = 'ApexOS_VFS';
+const STORE_NAME = 'files';
+
 const ICON_GRID = {
     width: 100,
     height: 110,
     margin: 20,
     topOffset: 60
 };
+window.ICON_GRID = ICON_GRID;
 
 const Storage = {
-    save() {
-        localStorage.setItem('apex_vfs', JSON.stringify(VFS));
+    db: null,
+    async init() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, 1);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME);
+                }
+            };
+            request.onsuccess = (e) => {
+                this.db = e.target.result;
+                resolve(this.db);
+            };
+            request.onerror = (e) => reject(e.target.error);
+        });
     },
-    load() {
-        const saved = localStorage.getItem('apex_vfs');
-        if (saved) {
-            VFS = JSON.parse(saved);
-        }
+    async save() {
+        if (!this.db) await this.init();
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction(STORE_NAME, 'readwrite');
+            const store = tx.objectStore(STORE_NAME);
+            const request = store.put(VFS, 'root');
+            request.onsuccess = () => resolve();
+            request.onerror = (e) => reject(e.target.error);
+        });
+    },
+    async load() {
+        if (!this.db) await this.init();
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction(STORE_NAME, 'readonly');
+            const store = tx.objectStore(STORE_NAME);
+            const request = store.get('root');
+            request.onsuccess = (e) => {
+                if (e.target.result) {
+                    VFS = e.target.result;
+                } else {
+                    // Migrate from localStorage if exists
+                    const saved = localStorage.getItem('apex_vfs');
+                    if (saved) {
+                        VFS = JSON.parse(saved);
+                        this.save();
+                    }
+                }
+                resolve(VFS);
+            };
+            request.onerror = (e) => reject(e.target.error);
+        });
     }
 };
 
@@ -69,31 +109,55 @@ const Kernel = {
         return dir ? dir[path] : null;
     },
 
-    saveFile(path, content) {
+    async saveFile(path, content) {
         const dir = this.getDirObj();
         if (dir) {
             dir[path] = content;
-            Storage.save();
+            await Storage.save();
+            System.refreshDesktopIcons();
             console.log(`Saved ${path}`);
             System.notify(`File saved: ${path}`);
         }
     },
 
-    deleteFile(path) {
+    async downloadFile(path) {
+        const content = this.getFile(path);
+        if (content !== null) {
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = path;
+            a.click();
+            URL.revokeObjectURL(url);
+            System.notify(`Downloading ${path}...`, "info");
+        }
+    },
+
+    async uploadFile(file) {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            await this.saveFile(file.name, e.target.result);
+            System.notify(`Uploaded ${file.name}`, "success");
+        };
+        reader.readAsText(file);
+    },
+
+    async deleteFile(path) {
         const dir = this.getDirObj();
         if (dir && dir[path] !== undefined) {
             delete dir[path];
-            Storage.save();
+            await Storage.save();
             return true;
         }
         return false;
     },
 
-    makeDir(name) {
+    async makeDir(name) {
         const dir = this.getDirObj();
         if (dir && !dir[name]) {
             dir[name] = {};
-            Storage.save();
+            await Storage.save();
             return true;
         }
         return false;
@@ -109,9 +173,11 @@ const Kernel = {
     },
 
     async boot() {
-        Storage.load(); // Grab user's files before we start the show
-        
-        // Let's get the user's preferred vibe
+        await Storage.load(); // Grab user's files before we start the show
+
+        // Let's play the boot sound
+        const bootSound = new Audio('assets/boot-sound.wav');
+        bootSound.play().catch(e => console.log("Audio play failed:", e));
         const savedTheme = localStorage.getItem('apex_theme');
         if (savedTheme && savedTheme !== 'default') {
             document.body.className = savedTheme;
@@ -142,9 +208,12 @@ const Kernel = {
         bootScreen.classList.add('hidden');
         desktop.classList.remove('hidden');
         sessionStorage.setItem('apex_booted', 'true');
+        
+        // Ensure icons are refreshed AFTER desktop is shown
+        if (System.refreshDesktopIcons) System.refreshDesktopIcons();
+        
         this.startClock();
         System.setupShortcuts();
-        System.updateUserDisplay();
         System.notify("System booted successfully", "success");
         // Startup Sound Mock
         console.log("🔊 Playing Startup Sound...");
@@ -297,6 +366,116 @@ const System = {
         this.notify(`Night Light ${!isActive ? 'Enabled' : 'Disabled'}`, 'info');
     },
 
+    toggleSpotlight() {
+        let spotlight = document.getElementById('spotlight-search');
+        if (spotlight) {
+            spotlight.remove();
+            return;
+        }
+
+        spotlight = document.createElement('div');
+        spotlight.id = 'spotlight-search';
+        spotlight.style.cssText = `
+            position: fixed;
+            top: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 600px;
+            background: rgba(20, 20, 20, 0.85);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            z-index: 10000;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            padding: 20px;
+            color: white;
+        `;
+
+        spotlight.innerHTML = `
+            <div style="display:flex; align-items:center; gap:15px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:15px">
+                <span style="font-size:1.5em">🔍</span>
+                <input type="text" id="spotlight-input" placeholder="Search apps, files, or web..." style="flex:1; background:transparent; border:none; color:white; font-size:1.2em; outline:none">
+            </div>
+            <div id="spotlight-results" style="margin-top:15px; max-height:400px; overflow-y:auto"></div>
+        `;
+
+        document.body.appendChild(spotlight);
+        const input = document.getElementById('spotlight-input');
+        const results = document.getElementById('spotlight-results');
+
+        input.focus();
+
+        input.oninput = (e) => {
+            const query = e.target.value.toLowerCase();
+            if (!query) {
+                results.innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            
+            // Search Apps
+            const matchedApps = Object.keys(Apps).filter(key => Apps[key].title.toLowerCase().includes(query));
+            if (matchedApps.length > 0) {
+                html += `<div style="font-size:0.8em; opacity:0.5; margin-bottom:10px; text-transform:uppercase">Applications</div>`;
+                matchedApps.forEach(key => {
+                    html += `
+                        <div class="spotlight-item" onclick="Apps.${key}.launch(); document.getElementById('spotlight-search').remove();" style="display:flex; align-items:center; gap:10px; padding:10px; border-radius:8px; cursor:pointer">
+                            <img src="${Apps[key].icon}" style="width:24px; height:24px">
+                            <span>${Apps[key].title}</span>
+                        </div>
+                    `;
+                });
+            }
+
+            // Search Files (IndexedDB aware)
+            const matchedFiles = [];
+            const searchDir = (dir, path) => {
+                for (const key in dir) {
+                    if (typeof dir[key] === 'object') {
+                        searchDir(dir[key], path + (path === '/' ? '' : '/') + key);
+                    } else if (key.toLowerCase().includes(query)) {
+                        matchedFiles.push({ name: key, path: path + (path === '/' ? '' : '/') + key });
+                    }
+                }
+            };
+            searchDir(VFS, "");
+
+            if (matchedFiles.length > 0) {
+                html += `<div style="font-size:0.8em; opacity:0.5; margin:15px 0 10px 0; text-transform:uppercase">Files</div>`;
+                matchedFiles.forEach(file => {
+                    html += `
+                        <div class="spotlight-item" onclick="Apps.editor.launch('${file.name}'); document.getElementById('spotlight-search').remove();" style="display:flex; align-items:center; gap:10px; padding:10px; border-radius:8px; cursor:pointer">
+                            <span>📄</span>
+                            <span>${file.name}</span>
+                            <span style="font-size:0.7em; opacity:0.4">${file.path}</span>
+                        </div>
+                    `;
+                });
+            }
+
+            results.innerHTML = html;
+        };
+
+        input.onkeydown = (e) => {
+            if (e.key === 'Escape') spotlight.remove();
+        };
+    },
+
+    openClipboardManager() {
+        const winId = `clipboard-${Date.now()}`;
+        wm.createWindow("Clipboard Manager", `
+            <div style="padding:15px">
+                <div style="font-size:0.8em; opacity:0.6; margin-bottom:15px">Recent items from your clipboard (mocked)</div>
+                <div id="${winId}-list" style="display:flex; flex-direction:column; gap:10px">
+                    <div class="clip-item" style="padding:10px; background:rgba(255,255,255,0.05); border-radius:5px; cursor:pointer">https://apexos.dev/docs</div>
+                    <div class="clip-item" style="padding:10px; background:rgba(255,255,255,0.05); border-radius:5px; cursor:pointer">const greeting = "Hello ApexOS";</div>
+                    <div class="clip-item" style="padding:10px; background:rgba(255,255,255,0.05); border-radius:5px; cursor:pointer">#f39c12</div>
+                </div>
+            </div>
+        `, 300, 400, 'clipboard');
+    },
+
     toggleWifi() {
         const current = localStorage.getItem('cc_WiFi') === 'true';
         localStorage.setItem('cc_WiFi', !current);
@@ -387,7 +566,17 @@ const System = {
 
     setupShortcuts() {
         document.addEventListener('keydown', (e) => {
-            // Konami Code: Up, Up, Down, Down, Left, Right, Left, Right, B, A
+            // Spotlight Search (Cmd/Win + Space)
+            if (e.metaKey && e.code === 'Space') {
+                e.preventDefault();
+                System.toggleSpotlight();
+            }
+
+            // Clipboard Manager (Cmd/Win + V) - Mock
+            if (e.metaKey && e.key.toLowerCase() === 'v' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+                e.preventDefault();
+                System.openClipboardManager();
+            }
             this.konami = this.konami || [];
             this.konami.push(e.key);
             this.konami = this.konami.slice(-10);
@@ -436,18 +625,15 @@ const System = {
         document.getElementById('power-menu').classList.toggle('hidden');
     },
 
-    updateUserDisplay() {
-        const name = localStorage.getItem('apex_user') || 'Apex User';
-        const el = document.getElementById('display-username');
-        if (el) el.textContent = name;
-    },
-
     sortIcons() {
-        const appsWithIcons = ["terminal", "browser", "explorer", "editor", "notes", "calc", "clock", "settings", "snake", "paint", "weather", "sysinfo", "imageviewer", "stopwatch", "unitconv", "help"];
+        const appsWithIcons = ["terminal", "browser", "explorer", "editor", "notes", "calc", "clock", "settings", "snake", "paint", "weather", "media"];
         appsWithIcons.forEach(appKey => {
             localStorage.removeItem(`icon-pos-${appKey}`);
         });
-        if (this.refreshDesktopIcons) this.refreshDesktopIcons();
+        if (this.refreshDesktopIcons) {
+            console.log("Forcing icon sort and refresh...");
+            this.refreshDesktopIcons();
+        }
     }
 };
 
@@ -615,8 +801,9 @@ class WindowManager {
                     // Snap to grid
                     const left = parseInt(element.style.left);
                     const top = parseInt(element.style.top);
-                    const snappedLeft = Math.round((left - ICON_GRID.margin) / ICON_GRID.width) * ICON_GRID.width + ICON_GRID.margin;
-                    const snappedTop = Math.round((top - ICON_GRID.topOffset) / ICON_GRID.height) * ICON_GRID.height + ICON_GRID.topOffset;
+                    const grid = typeof ICON_GRID !== 'undefined' ? ICON_GRID : (window.ICON_GRID || { margin: 20, width: 100, topOffset: 60, height: 110 });
+                    const snappedLeft = Math.round((left - grid.margin) / grid.width) * grid.width + grid.margin;
+                    const snappedTop = Math.round((top - grid.topOffset) / grid.height) * grid.height + grid.topOffset;
                     
                     element.style.left = `${snappedLeft}px`;
                     element.style.top = `${snappedTop}px`;
@@ -729,6 +916,22 @@ const Apps = {
                         output.innerHTML += `<div>${Kernel.listDir()}</div>`;
                     } else if (command === "pwd") {
                         output.innerHTML += `<div>${Kernel.currentDir}</div>`;
+                    } else if (command === "worker") {
+                        // Web Worker Demo
+                        const workerBlob = new Blob([`
+                            onmessage = function(e) {
+                                let result = 0;
+                                for (let i = 0; i < e.data; i++) result += i;
+                                postMessage(result);
+                            }
+                        `], { type: 'application/javascript' });
+                        const worker = new Worker(URL.createObjectURL(workerBlob));
+                        output.innerHTML += `<div>[WORKER] Starting heavy calculation...</div>`;
+                        worker.postMessage(100000000);
+                        worker.onmessage = (e) => {
+                            output.innerHTML += `<div>[WORKER] Result: ${e.data}</div>`;
+                            output.scrollTop = output.scrollHeight;
+                        };
                     } else if (command === "mkdir") {
                         const name = args[1];
                         if (name && Kernel.makeDir(name)) {
@@ -911,22 +1114,32 @@ const Apps = {
             const winId = `explorer-${Math.random().toString(36).substring(2, 9)}`;
             
             const renderFiles = () => {
-                const files = Kernel.listDir().split('  ');
-                return files.map(f => `
-                    <div class="file-item" data-file="${f}" style="cursor:pointer; text-align:center; padding:5px; border:1px solid transparent">
-                        <div style="font-size:1.5em">📄</div>
-                        <div style="font-size:0.7em; overflow:hidden; text-overflow:ellipsis">${f}</div>
-                    </div>
-                `).join('');
+                const dir = Kernel.getDirObj();
+                if (!dir) return "";
+                return Object.keys(dir).map(f => {
+                    const isDir = typeof dir[f] === 'object';
+                    return `
+                        <div class="file-item" data-file="${f}" data-type="${isDir ? 'dir' : 'file'}" style="cursor:pointer; text-align:center; padding:5px; border:1px solid transparent">
+                            <div style="font-size:1.5em">${isDir ? '📁' : '📄'}</div>
+                            <div style="font-size:0.7em; overflow:hidden; text-overflow:ellipsis">${f}</div>
+                        </div>
+                    `;
+                }).join('');
             };
             
             wm.createWindow("File Explorer", `
-                <div class="explorer-path" style="border-bottom:1px solid #333; margin-bottom:10px; padding-bottom:5px">Location: ${Kernel.currentDir}</div>
-                <div class="explorer-files" id="${winId}-files" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:10px">
-                    ${renderFiles()}
+                <div style="height:100%; display:flex; flex-direction:column">
+                    <div class="explorer-path" style="border-bottom:1px solid #333; margin-bottom:10px; padding:5px; font-size:0.8em">Location: ${Kernel.currentDir}</div>
+                    <div style="display:flex; gap:10px; padding:0 5px 10px 5px">
+                        <button id="${winId}-refresh" style="background:transparent; color:var(--accent-color); border:1px solid var(--accent-color); cursor:pointer; font-size:0.7em; padding:2px 5px">Refresh</button>
+                        <button id="${winId}-upload" style="background:transparent; color:var(--accent-color); border:1px solid var(--accent-color); cursor:pointer; font-size:0.7em; padding:2px 5px">Upload</button>
+                        <input type="file" id="${winId}-file-input" style="display:none">
+                    </div>
+                    <div class="explorer-files" id="${winId}-files" style="flex:1; display:grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap:10px; overflow-y:auto; padding:5px">
+                        ${renderFiles()}
+                    </div>
                 </div>
-                <button id="${winId}-refresh" style="margin-top:10px; background:transparent; color:var(--accent-color); border:1px solid var(--accent-color); cursor:pointer; font-size:0.7em; padding:2px 5px">Refresh</button>
-            `, 400, 300, 'explorer');
+            `, 450, 350, 'explorer');
 
             const attachHandlers = () => {
                 const container = document.getElementById(`${winId}-files`);
@@ -935,65 +1148,149 @@ const Apps = {
                 container.querySelectorAll('.file-item').forEach(item => {
                     item.onclick = () => {
                         const fileName = item.getAttribute('data-file');
-                        Apps.editor.launch(fileName);
+                        const type = item.getAttribute('data-type');
+                        if (type === 'file') {
+                            Apps.editor.launch(fileName);
+                        }
+                    };
+                    item.oncontextmenu = (e) => {
+                        e.preventDefault();
+                        const fileName = item.getAttribute('data-file');
+                        if (confirm(`Download ${fileName}?`)) {
+                            Kernel.downloadFile(fileName);
+                        }
                     };
                     item.onmouseover = () => item.style.borderColor = 'var(--accent-color)';
                     item.onmouseout = () => item.style.borderColor = 'transparent';
                 });
             };
 
+            const refresh = () => {
+                const filesElem = document.getElementById(`${winId}-files`);
+                if (filesElem) {
+                    filesElem.innerHTML = renderFiles();
+                    attachHandlers();
+                }
+            };
+
             setTimeout(() => {
                 attachHandlers();
-                document.getElementById(`${winId}-refresh`).onclick = () => {
-                    document.getElementById(`${winId}-files`).innerHTML = renderFiles();
-                    attachHandlers();
+                document.getElementById(`${winId}-refresh`).onclick = refresh;
+                document.getElementById(`${winId}-upload`).onclick = () => {
+                    document.getElementById(`${winId}-file-input`).click();
+                };
+                document.getElementById(`${winId}-file-input`).onchange = async (e) => {
+                    if (e.target.files.length > 0) {
+                        await Kernel.uploadFile(e.target.files[0]);
+                        refresh();
+                    }
                 };
             }, 100);
         }
     },
     calc: {
-        title: "Calc",
+        title: "Calculator",
         icon: "assets/calculator.png",
         launch: () => {
-            const winId = `calc-${Math.random().toString(36).substring(2, 9)}`;
-            const win = wm.createWindow("Calculator", `
-                <div id="${winId}-display" style="background:#000; color:var(--accent-color); padding:10px; text-align:right; margin-bottom:10px; border:1px solid var(--accent-color); min-height:40px; font-size:1.5em; overflow:hidden">0</div>
-                <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:5px">
-                    ${['7','8','9','/','4','5','6','*','1','2','3','-','0','C','=','+','sqrt','^','sin','cos','tan','log','PI','exp'].map(b => 
-                        `<button class="calc-btn" style="padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer; font-size:0.8em">${b}</button>`
-                    ).join('')}
+            const winId = `calc-${Date.now()}`;
+            wm.createWindow("Calculator", `
+                <div style="height:100%; display:flex; flex-direction:column">
+                    <div class="app-tabs">
+                        <div class="app-tab active" id="${winId}-tab-calc">Calculator</div>
+                        <div class="app-tab" id="${winId}-tab-unit">Unit Converter</div>
+                    </div>
+                    <div id="${winId}-content" style="flex:1; padding:15px">
+                        <!-- Content -->
+                    </div>
                 </div>
-            `, 400, 420, 'calc');
+            `, 320, 450, 'calc');
 
-            let current = "";
-            const display = win.querySelector(`#${winId}-display`);
-            const btns = win.querySelectorAll(`.calc-btn`);
-            
-            btns.forEach(btn => {
-                btn.onclick = () => {
-                    const val = btn.textContent;
-                    if (val === "=") {
-                        try { 
-                            let expr = current.replace(/sqrt/g, 'Math.sqrt')
-                                              .replace(/\^/g, '**')
-                                              .replace(/sin/g, 'Math.sin')
-                                              .replace(/cos/g, 'Math.cos')
-                                              .replace(/tan/g, 'Math.tan')
-                                              .replace(/log/g, 'Math.log')
-                                              .replace(/PI/g, 'Math.PI')
-                                              .replace(/exp/g, 'Math.exp');
-                            current = eval(expr).toString(); 
-                        } catch { current = "Error"; }
-                    } else if (val === "C") {
-                        current = "";
-                    } else if (['sqrt','sin','cos','tan','log','exp'].includes(val)) {
-                        current += val + "(";
-                    } else {
-                        current += val;
-                    }
-                    display.textContent = current || "0";
-                };
-            });
+            const content = document.getElementById(`${winId}-content`);
+
+            const renderCalc = () => {
+                content.innerHTML = `
+                    <input type="text" id="${winId}-display" style="width:100%; height:50px; background:#111; border:1px solid #333; color:white; text-align:right; padding:10px; font-size:1.5em; margin-bottom:10px" readonly value="0">
+                    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:5px">
+                        <button class="calc-btn" data-val="C" style="background:#f44336; color:white; padding:10px; border:1px solid #444; cursor:pointer">C</button>
+                        <button class="calc-btn" data-val="(" style="padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer">(</button>
+                        <button class="calc-btn" data-val=")" style="padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer">)</button>
+                        <button class="calc-btn" data-val="/" style="background:var(--accent-color); color:white; padding:10px; border:1px solid #444; cursor:pointer">/</button>
+                        <button class="calc-btn" data-val="7" style="padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer">7</button>
+                        <button class="calc-btn" data-val="8" style="padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer">8</button>
+                        <button class="calc-btn" data-val="9" style="padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer">9</button>
+                        <button class="calc-btn" data-val="*" style="background:var(--accent-color); color:white; padding:10px; border:1px solid #444; cursor:pointer">*</button>
+                        <button class="calc-btn" data-val="4" style="padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer">4</button>
+                        <button class="calc-btn" data-val="5" style="padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer">5</button>
+                        <button class="calc-btn" data-val="6" style="padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer">6</button>
+                        <button class="calc-btn" data-val="-" style="background:var(--accent-color); color:white; padding:10px; border:1px solid #444; cursor:pointer">-</button>
+                        <button class="calc-btn" data-val="1" style="padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer">1</button>
+                        <button class="calc-btn" data-val="2" style="padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer">2</button>
+                        <button class="calc-btn" data-val="3" style="padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer">3</button>
+                        <button class="calc-btn" data-val="+" style="background:var(--accent-color); color:white; padding:10px; border:1px solid #444; cursor:pointer">+</button>
+                        <button class="calc-btn" data-val="0" style="grid-column: span 2; padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer">0</button>
+                        <button class="calc-btn" data-val="." style="padding:10px; background:var(--window-bg); color:var(--text-color); border:1px solid #444; cursor:pointer">.</button>
+                        <button class="calc-btn" data-val="=" style="background:var(--accent-color); color:white; padding:10px; border:1px solid #444; cursor:pointer">=</button>
+                    </div>
+                `;
+                const display = document.getElementById(`${winId}-display`);
+                content.querySelectorAll('.calc-btn').forEach(btn => {
+                    btn.onclick = () => {
+                        const val = btn.getAttribute('data-val');
+                        if (val === 'C') display.value = '0';
+                        else if (val === '=') {
+                            try { display.value = eval(display.value); }
+                            catch { display.value = 'Error'; }
+                        } else {
+                            if (display.value === '0' || display.value === 'Error') display.value = val;
+                            else display.value += val;
+                        }
+                    };
+                });
+            };
+
+            const renderUnit = () => {
+                content.innerHTML = `
+                    <div style="display:flex; flex-direction:column; gap:10px">
+                        <label>Length:</label>
+                        <div style="display:flex; gap:5px">
+                            <input type="number" id="${winId}-m" placeholder="Meters" style="flex:1; padding:8px; background:#111; color:white; border:1px solid #333">
+                            <input type="number" id="${winId}-ft" placeholder="Feet" style="flex:1; padding:8px; background:#111; color:white; border:1px solid #333">
+                        </div>
+                        <label>Weight:</label>
+                        <div style="display:flex; gap:5px">
+                            <input type="number" id="${winId}-kg" placeholder="KG" style="flex:1; padding:8px; background:#111; color:white; border:1px solid #333">
+                            <input type="number" id="${winId}-lb" placeholder="LB" style="flex:1; padding:8px; background:#111; color:white; border:1px solid #333">
+                        </div>
+                        <label>Temp:</label>
+                        <div style="display:flex; gap:5px">
+                            <input type="number" id="${winId}-c" placeholder="°C" style="flex:1; padding:8px; background:#111; color:white; border:1px solid #333">
+                            <input type="number" id="${winId}-f" placeholder="°F" style="flex:1; padding:8px; background:#111; color:white; border:1px solid #333">
+                        </div>
+                    </div>
+                `;
+                const m = document.getElementById(`${winId}-m`), ft = document.getElementById(`${winId}-ft`);
+                const kg = document.getElementById(`${winId}-kg`), lb = document.getElementById(`${winId}-lb`);
+                const c = document.getElementById(`${winId}-c`), f = document.getElementById(`${winId}-f`);
+                m.oninput = () => ft.value = (m.value * 3.28084).toFixed(2);
+                ft.oninput = () => m.value = (ft.value / 3.28084).toFixed(2);
+                kg.oninput = () => lb.value = (kg.value * 2.20462).toFixed(2);
+                lb.oninput = () => kg.value = (lb.value / 2.20462).toFixed(2);
+                c.oninput = () => f.value = ((c.value * 9/5) + 32).toFixed(2);
+                f.oninput = () => c.value = ((f.value - 32) * 5/9).toFixed(2);
+            };
+
+            document.getElementById(`${winId}-tab-calc`).onclick = (e) => {
+                document.querySelectorAll(`#${winId} .app-tab`).forEach(t => t.classList.remove('active'));
+                e.target.classList.add('active');
+                renderCalc();
+            };
+            document.getElementById(`${winId}-tab-unit`).onclick = (e) => {
+                document.querySelectorAll(`#${winId} .app-tab`).forEach(t => t.classList.remove('active'));
+                e.target.classList.add('active');
+                renderUnit();
+            };
+
+            renderCalc();
         }
     },
     calendar: {
@@ -1027,89 +1324,217 @@ const Apps = {
     settings: {
         title: "Settings",
         icon: "assets/settings.png",
-        launch: () => {
+        launch: (defaultTab = 'general') => {
             const winId = `settings-${Date.now()}`;
-            const currentTheme = localStorage.getItem('apex_theme') || 'default';
-            const currentAccent = localStorage.getItem('apex_accent') || '#3d5afe';
-            
-            const win = wm.createWindow("Settings", `
-                <div style="padding:15px; height:100%; overflow-y:auto">
-                    <div style="margin-bottom:15px">
-                        <label style="display:block; margin-bottom:5px">User Profile</label>
-                        <div style="display:flex; align-items:center; gap:10px; background:rgba(0,0,0,0.2); padding:10px; border-radius:8px">
-                            <div style="width:40px; height:40px; background:var(--accent-color); border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold">A</div>
-                            <input type="text" id="${winId}-username" value="${localStorage.getItem('apex_user') || 'Apex User'}" style="background:transparent; border:none; color:white; outline:none; font-family:inherit">
+            wm.createWindow("Settings", `
+                <div class="settings-container">
+                    <div class="settings-sidebar">
+                        <div class="settings-nav-item active" id="${winId}-nav-general" data-tab="general">General</div>
+                        <div class="settings-nav-item" id="${winId}-nav-personal" data-tab="personal">Personalization</div>
+                        <div class="settings-nav-item" id="${winId}-nav-system" data-tab="system">System Info</div>
+                        <div class="settings-nav-item" id="${winId}-nav-help" data-tab="help">Help Center</div>
+                    </div>
+                    <div id="${winId}-content" class="settings-content">
+                        <!-- Content injected here -->
+                    </div>
+                </div>
+            `, 600, 480, 'settings');
+
+            const content = document.getElementById(`${winId}-content`);
+            const navItems = ['general', 'personal', 'system', 'help'];
+
+            const setActiveTab = (tab) => {
+                document.querySelectorAll(`#${winId} .settings-nav-item`).forEach(n => {
+                    n.classList.remove('active');
+                    if (n.getAttribute('data-tab') === tab) n.classList.add('active');
+                });
+                if (tab === 'general') renderGeneral();
+                if (tab === 'personal') renderPersonal();
+                if (tab === 'system') renderSystem();
+                if (tab === 'help') renderHelp();
+            };
+
+            const renderGeneral = () => {
+                const currentTheme = localStorage.getItem('apex_theme') || 'default';
+                const currentAccent = localStorage.getItem('apex_accent') || '#3d5afe';
+                content.innerHTML = `
+                    <h2 style="margin-bottom:20px">General Settings</h2>
+                    <div style="margin-bottom:20px">
+                        <label style="display:block; margin-bottom:10px">System Profile</label>
+                        <div style="display:flex; align-items:center; gap:15px; background:rgba(255,255,255,0.05); padding:15px; border-radius:12px">
+                            <div style="width:50px; height:50px; background:var(--accent-color); border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:1.5em; font-weight:bold">A</div>
+                            <div style="flex:1">
+                                <div style="color:white; font-size:1.2em; font-family:inherit; width:100%">Apex User</div>
+                                <div style="font-size:0.8em; opacity:0.5">Administrator</div>
+                            </div>
                         </div>
                     </div>
 
-                    <label>System Theme:</label>
-                    <select id="${winId}-theme" style="width:100%; margin-top:5px; padding:8px; background:#000; color:var(--text-color); border:1px solid var(--accent-color); border-radius:5px">
-                        <option value="default" ${currentTheme === 'default' ? 'selected' : ''}>Matrix Green</option>
-                        <option value="theme-cyberpunk" ${currentTheme === 'theme-cyberpunk' ? 'selected' : ''}>Cyberpunk Purple</option>
-                        <option value="theme-light" ${currentTheme === 'theme-light' ? 'selected' : ''}>Light Mode</option>
-                        <option value="theme-classic" ${currentTheme === 'theme-classic' ? 'selected' : ''}>Classic OS</option>
-                        <option value="theme-sleek" ${currentTheme === 'theme-sleek' ? 'selected' : ''}>Sleek UI</option>
-                    </select>
-
-                    <div style="margin-top:15px">
-                        <label>Accent Color:</label>
-                        <input type="color" id="${winId}-accent" value="${currentAccent}" style="width:100%; height:30px; margin-top:5px; border:none; background:transparent">
+                    <div style="margin-bottom:20px">
+                        <label style="display:block; margin-bottom:5px">System Theme</label>
+                        <select id="${winId}-theme" style="width:100%; padding:10px; background:#111; color:white; border:1px solid #333; border-radius:8px">
+                            <option value="default" ${currentTheme === 'default' ? 'selected' : ''}>Matrix Green</option>
+                            <option value="theme-cyberpunk" ${currentTheme === 'theme-cyberpunk' ? 'selected' : ''}>Cyberpunk Purple</option>
+                            <option value="theme-light" ${currentTheme === 'theme-light' ? 'selected' : ''}>Light Mode</option>
+                            <option value="theme-classic" ${currentTheme === 'theme-classic' ? 'selected' : ''}>Classic OS</option>
+                            <option value="theme-sleek" ${currentTheme === 'theme-sleek' ? 'selected' : ''}>Sleek UI</option>
+                        </select>
                     </div>
 
-                    <div style="margin-top:15px">
-                        <label>Wallpaper (Sleek only):</label>
-                        <input type="text" id="${winId}-wp" placeholder="Image URL..." style="width:100%; margin-top:5px; padding:8px; background:#000; color:var(--text-color); border:1px solid var(--accent-color); border-radius:5px" value="${localStorage.getItem('apex_wallpaper') || ''}">
+                    <div style="margin-bottom:20px">
+                        <label style="display:block; margin-bottom:5px">Accent Color</label>
+                        <input type="color" id="${winId}-accent" value="${currentAccent}" style="width:100%; height:40px; border:none; background:transparent; cursor:pointer">
                     </div>
 
-                    <div style="margin-top:15px; display:flex; flex-direction:column; gap:10px">
-                        <label><input type="checkbox" id="${winId}-stats" ${localStorage.getItem('apex_show_stats') === 'true' ? 'checked' : ''}> Show RAM usage in taskbar</label>
-                        <label><input type="checkbox" id="${winId}-animations" ${localStorage.getItem('apex_animations') !== 'false' ? 'checked' : ''}> Enable system animations</label>
+                    <div style="margin-bottom:20px">
+                        <label style="display:block; margin-bottom:5px">Wallpaper URL (Sleek Theme)</label>
+                        <input type="text" id="${winId}-wp" placeholder="https://..." style="width:100%; padding:10px; background:#111; color:white; border:1px solid #333; border-radius:8px" value="${localStorage.getItem('apex_wallpaper') || ''}">
                     </div>
-                    
+
                     <div style="margin-top:20px; border-top:1px solid #333; padding-top:15px">
-                        <button id="${winId}-lock" style="margin-bottom:10px; padding:8px; background:var(--accent-color); color:#fff; border:none; cursor:pointer; width:100%; border-radius:5px">Lock System (Win+L)</button>
-                        <button id="${winId}-reset" style="padding:8px; background:#f44336; color:#fff; border:none; cursor:pointer; width:100%; border-radius:5px">Factory Reset (Wipe Data)</button>
+                        <button id="${winId}-reset" style="padding:10px; background:#f44336; color:#fff; border:none; cursor:pointer; width:100%; border-radius:8px; font-weight:bold">Factory Reset (Wipe Data)</button>
                     </div>
-                </div>
-            `, 400, 500, 'settings');
+                `;
 
-            document.getElementById(`${winId}-username`).onchange = (e) => {
-                localStorage.setItem('apex_user', e.target.value);
-                System.notify(`Username changed to ${e.target.value}`);
+
+                document.getElementById(`${winId}-theme`).onchange = (e) => {
+                    const theme = e.target.value;
+                    document.body.className = theme === 'default' ? '' : theme;
+                    localStorage.setItem('apex_theme', theme);
+                    System.notify(`Theme applied: ${theme}`);
+                };
+
+                document.getElementById(`${winId}-accent`).oninput = (e) => {
+                    document.documentElement.style.setProperty('--accent-color', e.target.value);
+                    localStorage.setItem('apex_accent', e.target.value);
+                };
+
+                document.getElementById(`${winId}-wp`).onchange = (e) => {
+                    localStorage.setItem('apex_wallpaper', e.target.value);
+                    if (document.body.classList.contains('theme-sleek')) {
+                        document.body.style.backgroundImage = `url('${e.target.value}')`;
+                    }
+                };
+
+                document.getElementById(`${winId}-reset`).onclick = () => {
+                    if(confirm("This will wipe all your files and settings. You sure?")) {
+                        localStorage.clear();
+                        location.reload();
+                    }
+                };
             };
 
-            document.getElementById(`${winId}-accent`).oninput = (e) => {
-                document.documentElement.style.setProperty('--accent-color', e.target.value);
-                localStorage.setItem('apex_accent', e.target.value);
+            const renderPersonal = () => {
+                const wallpapers = [
+                    { name: 'Default', url: 'assets/background.png' },
+                    { name: 'Abstract Blue', url: 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?q=80&w=2070&auto=format&fit=crop' },
+                    { name: 'Dark Minimal', url: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=2070&auto=format&fit=crop' },
+                    { name: 'Cyberpunk', url: 'https://images.unsplash.com/photo-1605810230434-7631ac76ec81?q=80&w=2070&auto=format&fit=crop' },
+                    { name: 'Nature', url: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=2070&auto=format&fit=crop' }
+                ];
+
+                content.innerHTML = `
+                    <h2 style="margin-bottom:20px">Personalization</h2>
+                    <div style="margin-bottom:20px">
+                        <label style="display:block; margin-bottom:10px">Wallpaper Gallery</label>
+                        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:10px">
+                            ${wallpapers.map(wp => `
+                                <div class="wp-thumb" data-url="${wp.url}" style="aspect-ratio:16/9; background:url('${wp.url}') center/cover; border-radius:8px; cursor:pointer; border:2px solid transparent; transition:all 0.2s">
+                                    <div style="background:rgba(0,0,0,0.5); color:white; font-size:0.7em; padding:2px 5px; border-bottom-right-radius:5px">${wp.name}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div style="margin-bottom:20px">
+                        <label style="display:block; margin-bottom:5px">Custom Wallpaper URL</label>
+                        <div style="display:flex; gap:10px">
+                            <input type="text" id="${winId}-wp-custom" placeholder="https://..." style="flex:1; padding:10px; background:#111; color:white; border:1px solid #333; border-radius:8px" value="${localStorage.getItem('apex_wallpaper') || ''}">
+                            <button id="${winId}-wp-apply" style="padding:10px 20px; background:var(--accent-color); color:black; border:none; border-radius:8px; cursor:pointer">Apply</button>
+                        </div>
+                    </div>
+                `;
+
+                const thumbs = content.querySelectorAll('.wp-thumb');
+                thumbs.forEach(thumb => {
+                    thumb.onclick = () => {
+                        thumbs.forEach(t => t.style.borderColor = 'transparent');
+                        thumb.style.borderColor = 'var(--accent-color)';
+                        const url = thumb.getAttribute('data-url');
+                        localStorage.setItem('apex_wallpaper', url);
+                        if (document.body.classList.contains('theme-sleek')) {
+                            document.body.style.backgroundImage = `url('${url}')`;
+                        }
+                        System.notify('Wallpaper updated!');
+                    };
+                });
+
+                document.getElementById(`${winId}-wp-apply`).onclick = () => {
+                    const url = document.getElementById(`${winId}-wp-custom`).value;
+                    if (url) {
+                        localStorage.setItem('apex_wallpaper', url);
+                        if (document.body.classList.contains('theme-sleek')) {
+                            document.body.style.backgroundImage = `url('${url}')`;
+                        }
+                        System.notify('Custom wallpaper applied!');
+                    }
+                };
             };
 
-            document.getElementById(`${winId}-lock`).onclick = () => System.lockScreen();
-
-            document.getElementById(`${winId}-reset`).onclick = () => {
-                if(confirm("This will wipe all your files and settings. You sure?")) {
-                    localStorage.clear();
-                    location.reload();
-                }
+            const renderSystem = () => {
+                content.innerHTML = `
+                    <h2 style="margin-bottom:20px">System Information</h2>
+                    <div style="background:rgba(255,255,255,0.05); padding:20px; border-radius:12px">
+                        <div style="text-align:center; margin-bottom:20px">
+                            <div style="font-size:3em; margin-bottom:10px">🚀</div>
+                            <div style="font-size:1.5em; font-weight:bold">ApexOS v1.5.0</div>
+                            <div style="opacity:0.6">"The Productivity Update"</div>
+                        </div>
+                        <table style="width:100%; border-collapse:collapse">
+                            <tr><td style="padding:10px 0; border-bottom:1px solid #333">Kernel</td><td style="text-align:right; opacity:0.8">ApexKernel 0.5.0-RELEASE</td></tr>
+                            <tr><td style="padding:10px 0; border-bottom:1px solid #333">VFS Storage</td><td style="text-align:right; opacity:0.8">IndexedDB (Encrypted)</td></tr>
+                            <tr><td style="padding:10px 0; border-bottom:1px solid #333">Memory</td><td style="text-align:right; opacity:0.8">${performance.memory ? Math.round(performance.memory.jsHeapSizeLimit / 1048576) : '4096'}MB RAM</td></tr>
+                            <tr><td style="padding:10px 0; border-bottom:1px solid #333">Display</td><td style="text-align:right; opacity:0.8">${window.innerWidth}x${window.innerHeight}</td></tr>
+                        </table>
+                        <p style="margin-top:20px; font-size:0.8em; opacity:0.4; text-align:center">Copyright © 2026 ApexSoft Industries</p>
+                    </div>
+                `;
             };
 
-            document.getElementById(`${winId}-theme`).onchange = (e) => {
-                const theme = e.target.value;
-                document.body.className = theme === 'default' ? '' : theme;
-                localStorage.setItem('apex_theme', theme);
-                System.notify(`Theme applied: ${theme}`);
+            const renderHelp = () => {
+                content.innerHTML = `
+                    <h2 style="margin-bottom:20px">Help Center</h2>
+                    <div style="display:flex; flex-direction:column; gap:15px">
+                        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px">
+                            <div style="font-weight:bold; margin-bottom:5px">⌨️ Keyboard Shortcuts</div>
+                            <div style="font-size:0.9em; opacity:0.7">
+                                Win + L: Lock Screen<br>
+                                Win + R: Run Dialog<br>
+                                Alt + T: Terminal<br>
+                                Alt + E: File Explorer<br>
+                                Alt + R: Search Everywhere
+                            </div>
+                        </div>
+                        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px">
+                            <div style="font-weight:bold; margin-bottom:5px">📂 File Management</div>
+                            <div style="font-size:0.9em; opacity:0.7">
+                                Use File Explorer to manage your virtual files. You can now upload real files by dragging them into the window!
+                            </div>
+                        </div>
+                        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px">
+                            <div style="font-weight:bold; margin-bottom:5px">☁️ Weather</div>
+                            <div style="font-size:0.9em; opacity:0.7">
+                                Connect your own OpenWeatherMap API key in the Weather app to get real-time updates.
+                            </div>
+                        </div>
+                    </div>
+                `;
             };
 
-            document.getElementById(`${winId}-wp`).onchange = (e) => {
-                localStorage.setItem('apex_wallpaper', e.target.value);
-                if (document.body.classList.contains('theme-sleek')) {
-                    document.body.style.backgroundImage = `url('${e.target.value}')`;
-                }
-            };
+            navItems.forEach(item => {
+                document.getElementById(`${winId}-nav-${item}`).onclick = () => setActiveTab(item);
+            });
 
-            document.getElementById(`${winId}-animations`).onchange = (e) => {
-                localStorage.setItem('apex_animations', e.target.checked);
-                System.notify(`Animations ${e.target.checked ? 'enabled' : 'disabled'}`);
-            };
+            setActiveTab(defaultTab);
         }
     },
     sysmon: {
@@ -1193,6 +1618,30 @@ const Apps = {
             updateList();
             const interval = setInterval(updateList, 2000);
             win.onremove = () => clearInterval(interval);
+        }
+    },
+    quotes: {
+        title: "Daily Quotes",
+        icon: "assets/sticky-notes.png",
+        launch: () => {
+            const quotes = [
+                "Simplicity is the ultimate sophistication.",
+                "Innovation distinguishes between a leader and a follower.",
+                "Stay hungry, stay foolish.",
+                "The only way to do great work is to love what you do.",
+                "Code is like humor. When you have to explain it, it’s bad.",
+                "First, solve the problem. Then, write the code.",
+                "Experience is the name everyone gives to their mistakes.",
+                "In order to be irreplaceable, one must always be different."
+            ];
+            const quote = quotes[Math.floor(Math.random() * quotes.length)];
+            wm.createWindow("Daily Quote", `
+                <div style="padding:30px; text-align:center; display:flex; flex-direction:column; justify-content:center; height:100%">
+                    <div style="font-size:3em; margin-bottom:20px; opacity:0.3">"</div>
+                    <div style="font-size:1.2em; font-style:italic; line-height:1.6">${quote}</div>
+                    <div style="font-size:3em; margin-top:20px; opacity:0.3; align-self:flex-end">"</div>
+                </div>
+            `, 400, 300, 'quotes');
         }
     },
     paint: {
@@ -1391,90 +1840,188 @@ const Apps = {
     },
     browser: {
         title: "Browser",
-        icon: "assets/folder.png",
+        icon: "assets/browser.png",
         launch: () => {
             const winId = `browser-${Date.now()}`;
             wm.createWindow("ApexBrowser", `
-                <div style="display:flex; padding:5px; background:#222; gap:5px">
-                    <input type="text" id="${winId}-url" value="https://www.wikipedia.org" style="flex:1; background:#000; border:1px solid #444; color:#fff; padding:2px 5px">
-                    <button id="${winId}-go" style="background:var(--accent-color); border:none; padding:2px 10px; cursor:pointer">Go</button>
+                <div style="height:100%; display:flex; flex-direction:column">
+                    <div style="display:flex; padding:8px; background:rgba(0,0,0,0.4); gap:8px; align-items:center; border-bottom:1px solid #333">
+                        <div style="display:flex; gap:5px">
+                            <button id="${winId}-back" style="background:transparent; border:none; color:white; cursor:pointer; padding:2px">⬅️</button>
+                            <button id="${winId}-forward" style="background:transparent; border:none; color:white; cursor:pointer; padding:2px">➡️</button>
+                            <button id="${winId}-reload" style="background:transparent; border:none; color:white; cursor:pointer; padding:2px">🔄</button>
+                        </div>
+                        <input type="text" id="${winId}-url" value="https://www.wikipedia.org" style="flex:1; background:rgba(0,0,0,0.3); border:1px solid #444; color:#fff; padding:4px 10px; border-radius:15px; font-size:0.9em; outline:none">
+                        <button id="${winId}-go" style="background:var(--accent-color); border:none; padding:4px 12px; cursor:pointer; border-radius:15px; font-weight:bold; color:black">Go</button>
+                    </div>
+                    <iframe id="${winId}-frame" src="https://www.wikipedia.org" style="flex:1; border:none; background:#fff"></iframe>
                 </div>
-                <iframe id="${winId}-frame" src="https://www.google.com" style="width:100%; height:calc(100% - 35px); border:none; background:#fff"></iframe>
-            `, 600, 450, 'browser');
+            `, 800, 600, 'browser');
 
             const go = () => {
                 let url = document.getElementById(`${winId}-url`).value;
-                if (!url && !url.trim()) return;
-                if (!url.startsWith('http')) url = 'https://' + url;
+                if (!url || !url.trim()) return;
+                if (!url.startsWith('http')) {
+                    if (url.includes('.') && !url.includes(' ')) {
+                        url = 'https://' + url;
+                    } else {
+                        url = 'https://www.google.com/search?q=' + encodeURIComponent(url);
+                    }
+                }
+                document.getElementById(`${winId}-url`).value = url;
                 document.getElementById(`${winId}-frame`).src = url;
             };
 
             document.getElementById(`${winId}-go`).onclick = go;
             document.getElementById(`${winId}-url`).onkeydown = (e) => { if(e.key === 'Enter') go(); };
+            document.getElementById(`${winId}-reload`).onclick = () => {
+                const frame = document.getElementById(`${winId}-frame`);
+                frame.src = frame.src;
+            };
         }
     },
     clock: {
         title: "Clock",
-        icon: "assets/settings.png",
+        icon: "assets/clock.png",
         launch: () => {
             const winId = `clock-${Date.now()}`;
-            wm.createWindow("Clock & Timer", `
-                <div style="padding:15px; text-align:center">
-                    <div id="${winId}-time" style="font-size:3em; margin-bottom:20px">00:00:00</div>
-                    <div style="display:flex; justify-content:center; gap:10px">
-                        <button id="${winId}-start" style="padding:10px 20px; background:var(--accent-color); border:none; cursor:pointer">Start</button>
-                        <button id="${winId}-stop" style="padding:10px 20px; background:#444; color:#fff; border:none; cursor:pointer">Reset</button>
+            wm.createWindow("Clock", `
+                <div style="height:100%; display:flex; flex-direction:column">
+                    <div class="app-tabs">
+                        <div class="app-tab active" id="${winId}-tab-clock">Clock</div>
+                        <div class="app-tab" id="${winId}-tab-timer">Timer</div>
+                        <div class="app-tab" id="${winId}-tab-stopwatch">Stopwatch</div>
+                    </div>
+                    <div id="${winId}-content" style="flex:1; padding:20px; text-align:center; display:flex; flex-direction:column; justify-content:center">
+                        <!-- Content injected here -->
                     </div>
                 </div>
-            `, 300, 200, 'clock');
+            `, 400, 350, 'clock');
 
-            let seconds = 0;
-            let timer = null;
-            const display = document.getElementById(`${winId}-time`);
+            const content = document.getElementById(`${winId}-content`);
+            const tabs = ['clock', 'timer', 'stopwatch'];
+            
+            let stopwatchSeconds = 0;
+            let stopwatchInterval = null;
+            let timerSeconds = 0;
+            let timerInterval = null;
 
-            document.getElementById(`${winId}-start`).onclick = (e) => {
-                if (timer) {
-                    clearInterval(timer);
-                    timer = null;
-                    e.target.textContent = "Start";
-                } else {
-                    timer = setInterval(() => {
-                        seconds++;
-                        const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
-                        const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
-                        const s = (seconds % 60).toString().padStart(2, '0');
-                        display.textContent = `${h}:${m}:${s}`;
-                    }, 1000);
-                    e.target.textContent = "Stop";
-                }
+            const renderClock = () => {
+                content.innerHTML = `
+                    <div id="${winId}-time-display" style="font-size:3.5em; margin-bottom:10px">00:00:00</div>
+                    <div id="${winId}-date-display" style="color:var(--accent-color); font-size:1.2em">${new Date().toDateString()}</div>
+                `;
+                const updateTime = () => {
+                    const display = document.getElementById(`${winId}-time-display`);
+                    if (display) display.textContent = new Date().toLocaleTimeString();
+                };
+                setInterval(updateTime, 1000);
+                updateTime();
             };
 
-            document.getElementById(`${winId}-stop`).onclick = () => {
-                clearInterval(timer);
-                timer = null;
-                seconds = 0;
-                display.textContent = "00:00:00";
-                document.getElementById(`${winId}-start`).textContent = "Start";
+            const renderTimer = () => {
+                content.innerHTML = `
+                    <div id="${winId}-timer-display" style="font-size:3.5em; margin-bottom:20px">00:00:00</div>
+                    <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px">
+                        <input type="number" id="${winId}-timer-min" placeholder="Min" style="width:60px; background:#222; border:1px solid #444; color:white; padding:5px">
+                        <input type="number" id="${winId}-timer-sec" placeholder="Sec" style="width:60px; background:#222; border:1px solid #444; color:white; padding:5px">
+                    </div>
+                    <div style="display:flex; justify-content:center; gap:10px">
+                        <button id="${winId}-timer-start" style="padding:10px 20px; background:var(--accent-color); border:none; cursor:pointer; font-weight:bold">Start</button>
+                        <button id="${winId}-timer-reset" style="padding:10px 20px; background:#444; color:white; border:none; cursor:pointer">Reset</button>
+                    </div>
+                `;
+
+                const display = document.getElementById(`${winId}-timer-display`);
+                const startBtn = document.getElementById(`${winId}-timer-start`);
+                
+                startBtn.onclick = () => {
+                    if (timerInterval) {
+                        clearInterval(timerInterval);
+                        timerInterval = null;
+                        startBtn.textContent = "Start";
+                    } else {
+                        if (timerSeconds === 0) {
+                            const m = parseInt(document.getElementById(`${winId}-timer-min`).value) || 0;
+                            const s = parseInt(document.getElementById(`${winId}-timer-sec`).value) || 0;
+                            timerSeconds = (m * 60) + s;
+                        }
+                        if (timerSeconds <= 0) return;
+                        
+                        timerInterval = setInterval(() => {
+                            timerSeconds--;
+                            const h = Math.floor(timerSeconds / 3600).toString().padStart(2, '0');
+                            const m = Math.floor((timerSeconds % 3600) / 60).toString().padStart(2, '0');
+                            const s = (timerSeconds % 60).toString().padStart(2, '0');
+                            display.textContent = `${h}:${m}:${s}`;
+                            if (timerSeconds <= 0) {
+                                clearInterval(timerInterval);
+                                timerInterval = null;
+                                System.notify("Timer Finished!", "success");
+                                startBtn.textContent = "Start";
+                            }
+                        }, 1000);
+                        startBtn.textContent = "Pause";
+                    }
+                };
+
+                document.getElementById(`${winId}-timer-reset`).onclick = () => {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                    timerSeconds = 0;
+                    display.textContent = "00:00:00";
+                    startBtn.textContent = "Start";
+                };
             };
-        }
-    },
-    sysinfo: {
-        title: "System Info",
-        icon: "assets/settings.png",
-        launch: () => {
-            wm.createWindow("System Information", `
-                <div style="padding:15px">
-                    <h2 style="color:var(--accent-color); margin-bottom:10px">ApexOS Specifications</h2>
-                    <table style="width:100%; border-collapse:collapse">
-                        <tr><td style="padding:5px; border-bottom:1px solid #333">OS Version</td><td style="padding:5px; border-bottom:1px solid #333">v1.3.0 "Power Update"</td></tr>
-                        <tr><td style="padding:5px; border-bottom:1px solid #333">Kernel</td><td style="padding:5px; border-bottom:1px solid #333">ApexKernel 0.2.0-LTS</td></tr>
-                        <tr><td style="padding:5px; border-bottom:1px solid #333">VFS Mode</td><td style="padding:5px; border-bottom:1px solid #333">Persistent LocalStorage</td></tr>
-                        <tr><td style="padding:5px; border-bottom:1px solid #333">Processor</td><td style="padding:5px; border-bottom:1px solid #333">Virtual Apex Core x86</td></tr>
-                        <tr><td style="padding:5px; border-bottom:1px solid #333">Memory</td><td style="padding:5px; border-bottom:1px solid #333">${performance.memory ? Math.round(performance.memory.jsHeapSizeLimit / 1048576) : '4096'}MB</td></tr>
-                    </table>
-                    <p style="margin-top:15px; font-size:0.8em; opacity:0.6; text-align:center">Copyright © 2026 Naman Shettigar.</p>
-                </div>
-            `, 400, 350, 'sysinfo');
+
+            const renderStopwatch = () => {
+                content.innerHTML = `
+                    <div id="${winId}-sw-display" style="font-size:3.5em; margin-bottom:20px">00:00:00</div>
+                    <div style="display:flex; justify-content:center; gap:10px">
+                        <button id="${winId}-sw-start" style="padding:10px 20px; background:var(--accent-color); border:none; cursor:pointer; font-weight:bold">Start</button>
+                        <button id="${winId}-sw-reset" style="padding:10px 20px; background:#444; color:white; border:none; cursor:pointer">Reset</button>
+                    </div>
+                `;
+                const display = document.getElementById(`${winId}-sw-display`);
+                const startBtn = document.getElementById(`${winId}-sw-start`);
+
+                startBtn.onclick = () => {
+                    if (stopwatchInterval) {
+                        clearInterval(stopwatchInterval);
+                        stopwatchInterval = null;
+                        startBtn.textContent = "Start";
+                    } else {
+                        stopwatchInterval = setInterval(() => {
+                            stopwatchSeconds++;
+                            const h = Math.floor(stopwatchSeconds / 3600).toString().padStart(2, '0');
+                            const m = Math.floor((stopwatchSeconds % 3600) / 60).toString().padStart(2, '0');
+                            const s = (stopwatchSeconds % 60).toString().padStart(2, '0');
+                            display.textContent = `${h}:${m}:${s}`;
+                        }, 1000);
+                        startBtn.textContent = "Stop";
+                    }
+                };
+
+                document.getElementById(`${winId}-sw-reset`).onclick = () => {
+                    clearInterval(stopwatchInterval);
+                    stopwatchInterval = null;
+                    stopwatchSeconds = 0;
+                    display.textContent = "00:00:00";
+                    startBtn.textContent = "Start";
+                };
+            };
+
+            tabs.forEach(tab => {
+                document.getElementById(`${winId}-tab-${tab}`).onclick = (e) => {
+                    document.querySelectorAll(`#${winId} .app-tab`).forEach(t => t.classList.remove('active'));
+                    e.target.classList.add('active');
+                    if (tab === 'clock') renderClock();
+                    if (tab === 'timer') renderTimer();
+                    if (tab === 'stopwatch') renderStopwatch();
+                };
+            });
+
+            renderClock();
         }
     },
     notes: {
@@ -1507,33 +2054,70 @@ const Apps = {
             
             const winId = `editor-${Math.random().toString(36).substring(2, 9)}`;
             const win = wm.createWindow("ApexPad", `
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px">
-                    <div style="font-size:0.8em">File: <input type="text" id="${winId}-filename" value="${fileName}" style="background:transparent; border:none; color:var(--accent-color); font-family:inherit; width:150px"></div>
-                    <div style="display:flex; gap:10px">
-                        <select id="${winId}-fs" style="background:#222; color:white; border:1px solid #444; font-size:0.8em">
-                            <option value="12px">Small</option>
-                            <option value="16px" selected>Normal</option>
-                            <option value="20px">Large</option>
-                            <option value="24px">X-Large</option>
-                        </select>
-                        <button id="${winId}-dark" style="font-size:0.8em; cursor:pointer">🌓</button>
+                <div style="height:100%; display:flex; flex-direction:column">
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:5px; background:rgba(255,255,255,0.05)">
+                        <div style="font-size:0.8em">File: <input type="text" id="${winId}-filename" value="${fileName}" style="background:transparent; border:none; color:var(--accent-color); font-family:inherit; width:150px"></div>
+                        <div style="display:flex; gap:10px">
+                            <button id="${winId}-toggle-preview" style="font-size:0.7em; cursor:pointer; background:transparent; border:1px solid #444; color:white; padding:2px 5px">Preview</button>
+                            <select id="${winId}-fs" style="background:#222; color:white; border:1px solid #444; font-size:0.7em">
+                                <option value="12px">Small</option>
+                                <option value="16px" selected>Normal</option>
+                                <option value="20px">Large</option>
+                            </select>
+                            <button id="${winId}-save" style="font-size:0.7em; background:var(--accent-color); color:#000; border:none; cursor:pointer; font-weight:bold; padding:2px 10px">Save</button>
+                        </div>
                     </div>
+                    <div id="${winId}-editor-container" style="flex:1; display:flex; overflow:hidden">
+                        <textarea id="${winId}-text" style="flex:1; background:#000; color:var(--text-color); border:none; border-right:1px solid #333; font-family:'Courier New', monospace; padding:10px; resize:none; font-size:16px; outline:none">${content}</textarea>
+                        <div id="${winId}-preview" style="flex:1; display:none; background:#111; padding:10px; overflow-y:auto; font-family:sans-serif; color:#ddd"></div>
+                    </div>
+                    <div id="${winId}-stats" style="font-size:0.7em; opacity:0.7; padding:2px 10px; background:rgba(0,0,0,0.2)">Words: 0 | Chars: 0</div>
                 </div>
-                <textarea id="${winId}-text" style="width:100%; height:320px; background:#000; color:var(--text-color); border:1px solid var(--accent-color); font-family:inherit; padding:10px; resize:none; font-size:16px">${content}</textarea>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px">
-                    <div id="${winId}-stats" style="font-size:0.8em; opacity:0.7">Words: 0 | Chars: 0</div>
-                    <button id="${winId}-save" style="padding:8px 20px; background:var(--accent-color); color:#000; border:none; cursor:pointer; font-weight:bold; border-radius:4px">Save File</button>
-                </div>
-            `, 600, 480, 'editor');
+            `, 700, 500, 'editor');
 
             const textarea = win.querySelector(`#${winId}-text`);
+            const preview = win.querySelector(`#${winId}-preview`);
             const stats = win.querySelector(`#${winId}-stats`);
+            const togglePreview = win.querySelector(`#${winId}-toggle-preview`);
+
+            let previewActive = false;
 
             const updateStats = () => {
                 const text = textarea.value.trim();
                 const words = text ? text.split(/\s+/).length : 0;
                 const chars = text.length;
                 stats.textContent = `Words: ${words} | Chars: ${chars}`;
+                if (previewActive) renderPreview();
+            };
+
+            const renderPreview = () => {
+                const text = textarea.value;
+                // Simple Markdown-ish parser
+                let html = text
+                    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+                    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+                    .replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>')
+                    .replace(/\*\*(.*)\*\*/gim, '<b>$1</b>')
+                    .replace(/\*(.*)\*/gim, '<i>$1</i>')
+                    .replace(/!\[(.*?)\]\((.*?)\)/gim, "<img alt='$1' src='$2' />")
+                    .replace(/\[(.*?)\]\((.*?)\)/gim, "<a href='$2'>$1</a>")
+                    .replace(/\n$/gim, '<br />');
+                
+                // Simple Syntax Highlighting for code blocks
+                html = html.replace(/```([\s\S]*?)```/g, (match, code) => {
+                    return `<pre style="background:#222; padding:10px; border-radius:5px; color:#aaffaa">${code.trim()}</pre>`;
+                });
+
+                preview.innerHTML = html;
+            };
+
+            togglePreview.onclick = () => {
+                previewActive = !previewActive;
+                preview.style.display = previewActive ? 'block' : 'none';
+                togglePreview.style.background = previewActive ? 'var(--accent-color)' : 'transparent';
+                togglePreview.style.color = previewActive ? '#000' : 'white';
+                if (previewActive) renderPreview();
             };
 
             textarea.oninput = updateStats;
@@ -1543,17 +2127,10 @@ const Apps = {
                 textarea.style.fontSize = e.target.value;
             };
 
-            win.querySelector(`#${winId}-dark`).onclick = () => {
-                const isDark = textarea.style.background === 'rgb(255, 255, 255)';
-                textarea.style.background = isDark ? '#000' : '#fff';
-                textarea.style.color = isDark ? 'var(--text-color)' : '#000';
-            };
-
             win.querySelector(`#${winId}-save`).onclick = () => {
                 const name = win.querySelector(`#${winId}-filename`).value;
                 const text = textarea.value;
                 Kernel.saveFile(name, text);
-                System.notify(`Saved ${name}`, 'success');
             };
         }
     },
@@ -1730,26 +2307,127 @@ const Apps = {
         }
     },
     media: {
-        title: "Media Player",
+        title: "Music Player",
         icon: "assets/folder.png",
         launch: () => {
-            wm.createWindow("Media Player", `
-                <div style="padding:20px; text-align:center; background:#000; height:100%; display:flex; flex-direction:column; justify-content:center">
-                    <div style="font-size:4em; margin-bottom:20px">🎵</div>
-                    <h3 style="color:var(--accent-color)">Now Playing: Apex Waves</h3>
-                    <div style="margin:20px 0; background:#333; height:5px; position:relative">
-                        <div style="background:var(--accent-color); width:40%; height:100%"></div>
+            const winId = `media-${Date.now()}`;
+            wm.createWindow("Music Player", `
+                <div style="padding:20px; text-align:center; background:#111; height:100%; display:flex; flex-direction:column; justify-content:center; color:white">
+                    <div id="${winId}-visualizer" style="height:100px; display:flex; align-items:flex-end; justify-content:center; gap:2px; margin-bottom:20px">
+                        <!-- Visualizer bars -->
                     </div>
-                    <div style="display:flex; justify-content:center; gap:20px; font-size:1.5em; cursor:pointer">
-                        <span>⏮️</span> <span>⏸️</span> <span>⏭️</span>
+                    <div style="font-size:3em; margin-bottom:10px">🎵</div>
+                    <h3 id="${winId}-title" style="color:var(--accent-color); margin-bottom:5px">No Track Loaded</h3>
+                    <p id="${winId}-status" style="font-size:0.8em; opacity:0.6; margin-bottom:20px">Please upload or select an audio file</p>
+                    
+                    <div style="margin-bottom:20px">
+                        <input type="range" id="${winId}-progress" value="0" style="width:100%; cursor:pointer">
+                    </div>
+                    
+                    <div style="display:flex; justify-content:center; gap:20px; font-size:1.5em; cursor:pointer; align-items:center">
+                        <span id="${winId}-prev">⏮️</span>
+                        <span id="${winId}-play-pause" style="font-size:1.5em">▶️</span>
+                        <span id="${winId}-next">⏭️</span>
+                    </div>
+                    
+                    <div style="margin-top:20px">
+                        <button id="${winId}-upload" style="background:transparent; border:1px solid var(--accent-color); color:var(--accent-color); padding:5px 10px; cursor:pointer">Upload MP3</button>
+                        <input type="file" id="${winId}-file-input" accept="audio/*" style="display:none">
                     </div>
                 </div>
-            `, 400, 320, 'media');
+            `, 400, 450, 'media');
+
+            const audio = new Audio();
+            let audioContext, analyser, source, dataArray;
+            const playPauseBtn = document.getElementById(`${winId}-play-pause`);
+            const status = document.getElementById(`${winId}-status`);
+            const title = document.getElementById(`${winId}-title`);
+            const visualizer = document.getElementById(`${winId}-visualizer`);
+            const progress = document.getElementById(`${winId}-progress`);
+
+            // Create visualizer bars
+            for (let i = 0; i < 32; i++) {
+                const bar = document.createElement('div');
+                bar.style.width = '4px';
+                bar.style.height = '10px';
+                bar.style.background = 'var(--accent-color)';
+                bar.style.transition = 'height 0.1s ease';
+                visualizer.appendChild(bar);
+            }
+
+            const initAudio = () => {
+                if (audioContext) return;
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                source = audioContext.createMediaElementSource(audio);
+                source.connect(analyser);
+                analyser.connect(audioContext.destination);
+                analyser.fftSize = 64;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                updateVisualizer();
+            };
+
+            const updateVisualizer = () => {
+                if (!analyser) return;
+                analyser.getByteFrequencyData(dataArray);
+                const bars = visualizer.children;
+                for (let i = 0; i < bars.length; i++) {
+                    const height = (dataArray[i] / 255) * 100;
+                    bars[i].style.height = `${Math.max(2, height)}px`;
+                }
+                requestAnimationFrame(updateVisualizer);
+            };
+
+            playPauseBtn.onclick = () => {
+                if (!audio.src) return;
+                initAudio();
+                if (audio.paused) {
+                    audio.play();
+                    playPauseBtn.textContent = '⏸️';
+                    status.textContent = 'Playing...';
+                } else {
+                    audio.pause();
+                    playPauseBtn.textContent = '▶️';
+                    status.textContent = 'Paused';
+                }
+            };
+
+            audio.ontimeupdate = () => {
+                if (audio.duration) {
+                    progress.value = (audio.currentTime / audio.duration) * 100;
+                }
+            };
+
+            progress.oninput = () => {
+                if (audio.duration) {
+                    audio.currentTime = (progress.value / 100) * audio.duration;
+                }
+            };
+
+            document.getElementById(`${winId}-upload`).onclick = () => {
+                document.getElementById(`${winId}-file-input`).click();
+            };
+
+            document.getElementById(`${winId}-file-input`).onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const url = URL.createObjectURL(file);
+                    audio.src = url;
+                    title.textContent = file.name;
+                    status.textContent = 'Ready to play';
+                    playPauseBtn.textContent = '▶️';
+                }
+            };
         }
     },
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed:', err));
+    }
+
     wm = new WindowManager();
     Kernel.boot();
 
@@ -1811,7 +2489,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Desktop Icons
     const desktopIcons = document.getElementById('desktop-icons');
-    const appsWithIcons = ["terminal", "browser", "explorer", "editor", "notes", "calc", "clock", "settings", "snake", "paint", "weather", "sysinfo", "imageviewer", "stopwatch", "unitconv", "help"];
+    const appsWithIcons = ["terminal", "browser", "explorer", "editor", "notes", "calc", "clock", "settings", "snake", "paint", "weather", "media"];
     
     const refreshDesktopIcons = () => {
         desktopIcons.innerHTML = '';
@@ -1833,26 +2511,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 icon.style.zIndex = 150;
             } else {
                 // Smart grid placement
-                const desktopHeight = window.innerHeight - ICON_GRID.topOffset;
+                const grid = typeof ICON_GRID !== 'undefined' ? ICON_GRID : (window.ICON_GRID || { width: 100, height: 110, margin: 20, topOffset: 60 });
+                const desktopHeight = window.innerHeight - grid.topOffset;
                 
-                const iconsPerCol = Math.max(1, Math.floor(desktopHeight / ICON_GRID.height));
+                const iconsPerCol = Math.max(1, Math.floor(desktopHeight / grid.height));
                 const col = Math.floor(index / iconsPerCol);
                 const row = index % iconsPerCol;
                 
                 icon.style.position = 'absolute';
-                icon.style.left = `${ICON_GRID.margin + (col * ICON_GRID.width)}px`;
-                icon.style.top = `${ICON_GRID.topOffset + (row * ICON_GRID.height)}px`;
+                icon.style.left = `${grid.margin + (col * grid.width)}px`;
+                icon.style.top = `${grid.topOffset + (row * grid.height)}px`;
             }
 
-            const iconHtml = app.icon.endsWith('.png') ? `<img src="${app.icon}" alt="${app.title}" style="pointer-events:none">` : app.icon;
+            const iconHtml = app.icon.endsWith('.png') ? `<img src="${app.icon}" alt="${app.title}" style="pointer-events:none; width:48px; height:48px;">` : app.icon;
             icon.innerHTML = `
-                <div class="icon-graphic">${iconHtml}</div>
-                <div class="icon-label">${app.title}</div>
+                <div class="icon-graphic" style="display:flex; align-items:center; justify-content:center; width:64px; height:64px; background:rgba(255,255,255,0.05); border-radius:10px; margin-bottom:5px;">${iconHtml}</div>
+                <div class="icon-label" style="font-size:0.8em; text-shadow: 1px 1px 2px black;">${app.title}</div>
             `;
+            
+            icon.style.opacity = '1';
+            icon.style.display = 'flex';
             
             let startX, startY;
             let dragStarted = false;
-            
+
             icon.addEventListener('mousedown', (e) => {
                 startX = e.clientX;
                 startY = e.clientY;
@@ -1878,12 +2560,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
             wm.makeDraggable(icon, true);
             desktopIcons.appendChild(icon);
+            console.log(`Rendered icon: ${appKey} at ${icon.style.left}, ${icon.style.top}`);
         });
+        console.log(`Finished rendering ${appsWithIcons.length} icons. Container height: ${desktopIcons.offsetHeight}`);
     };
 
     System.refreshDesktopIcons = refreshDesktopIcons;
 
     refreshDesktopIcons();
+    // Re-call after a small delay to ensure all DOM and CSS are ready
+    setTimeout(refreshDesktopIcons, 100);
+    setTimeout(refreshDesktopIcons, 500);
     window.addEventListener('resize', () => {
         // Only refresh icons if they aren't manually positioned? 
         // Actually, overlapping often happens when resizing or if the grid logic is flaky.
@@ -1896,7 +2583,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const welcomeWin = wm.createWindow('Welcome', `
             <div style="text-align:center; padding:10px;">
-                <h2 style="color:var(--text-color)">🚀 ApexOS v1.3.0</h2>
+                <h2 style="color:var(--text-color)">🚀 ApexOS v1.4.1</h2>
                 <p>System Initialized Successfully.</p>
                 <hr style="border:0; border-top:1px solid #333; margin:15px 0;">
                 <p>Welcome to your retro-modern workspace.</p>
