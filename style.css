@@ -1,3 +1,11 @@
+/* 
+ * ApexOS Styles
+ * 
+ * I tried to keep this organized with CSS variables so themes 
+ * are easy to swap. Sleek UI is my baby, but Matrix is a 
+ * close second.
+ */
+
 :root {
     --bg-color: #0c0c0c;
     --text-color: #00ff41;
@@ -7,7 +15,9 @@
     --font-main: 'Courier New', Courier, monospace;
 }
 
-/* Theme classes */
+/* --- THEME DEFINITIONS --- */
+
+/* The OG "Hacker" look */
 body.theme-cyberpunk {
     --bg-color: #2b0031;
     --text-color: #ff00ff;
@@ -16,6 +26,19 @@ body.theme-cyberpunk {
     --taskbar-bg: #3d0046;
 }
 
+/* My personal favorite - Glassmorphism vibes */
+body.theme-sleek {
+    --bg-color: #121212;
+    --text-color: #ffffff;
+    --accent-color: #3d5afe;
+    --window-bg: rgba(25, 25, 25, 0.6);
+    --taskbar-bg: rgba(15, 15, 15, 0.7);
+    --font-main: 'Inter', 'Segoe UI', Roboto, sans-serif;
+    background: url('assets/background.png') no-repeat center center fixed;
+    background-size: cover;
+}
+
+/* For when it's too bright outside */
 body.theme-light {
     --bg-color: #f0f0f0;
     --text-color: #333;
@@ -25,6 +48,7 @@ body.theme-light {
     --font-main: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+/* Nostalgia is a hell of a drug */
 body.theme-classic {
     --bg-color: #c0c0c0;
     --text-color: #000;
@@ -34,65 +58,149 @@ body.theme-classic {
     --font-main: 'MS Sans Serif', Arial, sans-serif;
 }
 
-body.theme-sleek {
-    --bg-color: #121212;
-    --text-color: #e0e0e0;
-    --accent-color: #3d5afe;
-    --window-bg: rgba(30, 30, 30, 0.85);
-    --taskbar-bg: rgba(20, 20, 20, 0.9);
-    --font-main: 'Inter', 'Segoe UI', Roboto, sans-serif;
-    background: url('assets/background.png') no-repeat center center fixed;
-    background-size: cover;
-}
+/* --- SLEEK UI SPECIFICS --- */
 
 body.theme-sleek .window {
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    backdrop-filter: blur(25px) saturate(180%);
+    -webkit-backdrop-filter: blur(25px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.5);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 body.theme-sleek .window-header {
-    background: rgba(61, 90, 254, 0.8);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
     color: #fff;
-    padding: 8px 12px;
+    padding: 10px 15px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+body.theme-sleek #taskbar {
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    background: rgba(10, 10, 10, 0.7);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 body.theme-sleek .start-btn {
-    border-radius: 5px;
-    background: var(--accent-color);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(5px);
     color: #fff;
-    border: none;
-    transition: transform 0.2s;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 body.theme-sleek .start-btn:hover {
+    background: var(--accent-color);
     transform: scale(1.05);
+    box-shadow: 0 0 15px var(--accent-color);
 }
 
 body.theme-sleek .taskbar-item {
-    border-radius: 5px;
+    border-radius: 8px;
     background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: background 0.2s;
 }
 
 body.theme-sleek #start-menu {
-    backdrop-filter: blur(15px);
-    background: rgba(20, 20, 20, 0.8);
-    border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    padding: 10px;
+    backdrop-filter: blur(30px) saturate(180%);
+    -webkit-backdrop-filter: blur(30px) saturate(180%);
+    background: rgba(20, 20, 20, 0.6);
+    border-radius: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 15px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6);
 }
 
 body.theme-sleek .desktop-icon {
-    transition: transform 0.2s, background 0.2s;
-    border-radius: 10px;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    border-radius: 12px;
+    padding: 10px;
+    border: 1px solid transparent;
 }
 
 body.theme-sleek .desktop-icon:hover {
     background: rgba(255, 255, 255, 0.1);
-    transform: translateY(-5px);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    transform: translateY(-5px) scale(1.05);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+body.theme-sleek .icon-graphic {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.05);
+    margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+}
+
+/* Snake Game */
+.snake-canvas {
+    background: #000;
+    display: block;
+    margin: 0 auto;
+    border: 2px solid var(--accent-color);
+}
+
+/* Paint App */
+.paint-canvas {
+    background: #fff;
+    cursor: crosshair;
+    display: block;
+    margin: 0 auto;
+    border: 1px solid #ccc;
+}
+.paint-toolbar {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    background: rgba(255,255,255,0.1);
+    margin-bottom: 10px;
+    border-radius: 5px;
+}
+
+/* Task Manager */
+.task-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px;
+    border-bottom: 1px solid #333;
+    align-items: center;
+}
+
+/* Battery/Status in Taskbar */
+.taskbar-status {
+    margin-left: 15px;
+    font-size: 0.8em;
+    opacity: 0.8;
+    display: flex;
+    gap: 10px;
+}
+
+/* Matrix Effect Overlay */
+.matrix-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+    z-index: 9999;
+    pointer-events: all;
 }
 
 * {
@@ -190,7 +298,7 @@ body {
     flex: 1;
     position: relative;
     padding: 20px;
-    z-index: 5;
+    z-index: 100;
 }
 
 /* Start Menu */
@@ -219,16 +327,11 @@ body {
 /* Desktop Icons */
 #desktop-icons {
     position: absolute;
-    top: 20px;
-    left: 20px;
-    right: 20px;
-    bottom: 60px;
-    display: flex;
-    flex-direction: column;
-    flex-wrap: wrap;
-    align-content: flex-start;
-    gap: 20px;
-    z-index: 1;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 150; /* Higher than window-container but lower than active windows */
     pointer-events: none; /* Allow clicking through the container to windows if needed, but we need icons to be clickable */
 }
 
@@ -240,6 +343,11 @@ body {
     pointer-events: auto; /* Re-enable for icons */
     user-select: none;
     position: relative; /* Default, will be switched to absolute when dragged */
+    z-index: 150;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
 }
 
 .desktop-icon:hover {
@@ -305,7 +413,123 @@ body {
 
 .window-content {
     padding: 10px;
-    height: 100%;
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Notifications */
+#notification-container {
+    position: fixed;
+    top: 50px;
+    right: 20px;
+    z-index: 5000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+}
+
+.notification {
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(10px);
+    border-left: 4px solid var(--accent-color);
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 4px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    min-width: 250px;
+    pointer-events: auto;
+    animation: slide-in 0.3s ease-out;
+    position: relative;
+    overflow: hidden;
+}
+
+.toast-success { border-left-color: #4caf50; }
+.toast-error { border-left-color: #f44336; }
+.toast-warning { border-left-color: #ff9800; }
+
+.notification.fade-out {
+    opacity: 0;
+    transform: translateX(50px);
+    transition: all 0.5s ease-in;
+}
+
+@keyframes slide-in {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.notification-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: var(--accent-color);
+    width: 100%;
+    animation: progress 3s linear forwards;
+}
+
+@keyframes progress {
+    from { width: 100%; }
+    to { width: 0; }
+}
+
+/* Run Dialog */
+#run-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    justify-content: center;
+    padding-top: 100px;
+    z-index: 4000;
+    backdrop-filter: blur(5px);
+}
+
+.run-dialog-inner {
+    background: var(--window-bg);
+    border: 1px solid var(--accent-color);
+    padding: 15px 25px;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    width: 400px;
+    height: fit-content;
+}
+
+#run-input {
+    background: transparent;
+    border: none;
+    color: var(--text-color);
+    font-family: inherit;
+    font-size: 1.2em;
+    outline: none;
+    flex: 1;
+}
+
+/* Sleek Scrollbar */
+.window-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.window-content::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+.window-content::-webkit-scrollbar-thumb {
+    background: var(--accent-color);
+    border-radius: 4px;
+    opacity: 0.5;
+}
+
+.window-content::-webkit-scrollbar-thumb:hover {
+    background: #fff;
 }
 
 .hidden {
