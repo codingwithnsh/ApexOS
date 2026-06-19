@@ -26,10 +26,18 @@
             <div class="start-menu-item" data-app="explorer">File Explorer</div>
             <div class="start-menu-item" data-app="editor">Text Editor</div>
             <div class="start-menu-item" data-app="calc">Calculator</div>
+            <div class="start-menu-item" data-app="sysmon">System Monitor</div>
             <div class="start-menu-item" data-app="settings">Settings</div>
+            <div class="start-menu-item" data-app="about">About ApexOS</div>
         </div>
 
         <div id="window-container"></div>
+        <div id="context-menu" class="hidden">
+            <div class="ctx-item" onclick="Apps.terminal.launch()">Open Terminal</div>
+            <div class="ctx-item" onclick="Apps.sysmon.launch()">System Monitor</div>
+            <hr style="border:0; border-top:1px solid #333">
+            <div class="ctx-item" onclick="location.reload()">Refresh System</div>
+        </div>
     </main>
 
     <script src="index.js"></script>

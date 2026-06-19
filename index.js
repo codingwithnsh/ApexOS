@@ -109,10 +109,25 @@ const Kernel = {
 
     startClock() {
         const clock = document.getElementById('clock');
+        clock.onclick = () => this.showCalendar();
         setInterval(() => {
             const now = new Date();
             clock.textContent = now.toLocaleTimeString();
         }, 1000);
+    },
+
+    showCalendar() {
+        const now = new Date();
+        const content = `
+            <div style="text-align:center; padding:10px">
+                <h3 style="color:var(--accent-color)">${now.toDateString()}</h3>
+                <div style="font-size:2em; margin:10px 0">${now.toLocaleTimeString()}</div>
+                <p>ApexOS System Time</p>
+                <hr style="border:0; border-top:1px solid #333; margin:15px 0">
+                <p style="font-size:0.8em; opacity:0.7; font-style:italic">"Time is what we want most, but what we use worst."</p>
+            </div>
+        `;
+        wm.createWindow("Clock", content);
     }
 };
 
@@ -128,7 +143,7 @@ class WindowManager {
     }
 
     createWindow(title, content) {
-        const id = `win-${Date.now()}`;
+        const id = `win-${Math.random().toString(36).substring(2, 11)}`;
         const win = document.createElement('div');
         win.className = 'window';
         win.id = id;
@@ -139,26 +154,45 @@ class WindowManager {
         win.innerHTML = `
             <div class="window-header">
                 <span>${title}</span>
-                <span class="close-btn" style="cursor:pointer">X</span>
+                <div class="window-controls">
+                    <span class="control-btn min-btn">_</span>
+                    <span class="control-btn max-btn">[]</span>
+                    <span class="control-btn close-btn">X</span>
+                </div>
             </div>
             <div class="window-content">${content}</div>
         `;
 
-        win.querySelector('.close-btn').onclick = () => {
+        win.querySelector('.close-btn').onclick = (e) => {
+            e.stopPropagation();
             win.remove();
-            this.windows = this.windows.filter(w => w.element !== win);
+            this.windows = this.windows.filter(w => w.id !== id);
             this.updateTaskbar();
+        };
+
+        win.querySelector('.min-btn').onclick = (e) => {
+            e.stopPropagation();
+            win.classList.add('minimized');
+            this.updateTaskbar();
+        };
+
+        win.querySelector('.max-btn').onclick = (e) => {
+            e.stopPropagation();
+            win.classList.toggle('maximized');
         };
 
         // Simple focus mechanism
         win.onmousedown = () => {
-            win.style.zIndex = this.zIndexCounter++;
+            if (!win.classList.contains('minimized')) {
+                win.style.zIndex = this.zIndexCounter++;
+            }
         };
 
         this.makeDraggable(win);
         this.container.appendChild(win);
         this.windows.push({ id, title, element: win });
         this.updateTaskbar();
+        return win;
     }
 
     updateTaskbar() {
@@ -167,8 +201,14 @@ class WindowManager {
         this.windows.forEach(w => {
             const btn = document.createElement('div');
             btn.className = 'taskbar-item';
+            if (w.element.classList.contains('minimized')) {
+                btn.style.opacity = '0.5';
+            }
             btn.textContent = w.title;
             btn.onclick = () => {
+                if (w.element.classList.contains('minimized')) {
+                    w.element.classList.remove('minimized');
+                }
                 w.element.style.zIndex = this.zIndexCounter++;
             };
             activeApps.appendChild(btn);
@@ -231,14 +271,52 @@ const Apps = {
                     
                     if (cmd === "ls") {
                         output.innerHTML += `<div>${Kernel.listDir()}</div>`;
+                    } else if (cmd.startsWith("cat ")) {
+                        const file = cmd.split(" ")[1];
+                        if (!file) {
+                            output.innerHTML += `<div>Usage: cat <filename></div>`;
+                        } else {
+                            const content = Kernel.getFile(file);
+                            output.innerHTML += content ? `<div style="white-space:pre-wrap; background:#111; padding:5px; border-left:2px solid var(--accent-color)">${content}</div>` : `<div>File not found: ${file}</div>`;
+                        }
+                    } else if (cmd.startsWith("echo ")) {
+                        output.innerHTML += `<div>${input.value.substring(5)}</div>`;
                     } else if (cmd === "help") {
-                        output.innerHTML += `<div>Commands: ls, clear, help, whoami, date</div>`;
+                        output.innerHTML += `<div>Commands: ls, cat, echo, clear, help, whoami, date, apexfetch, theme</div>`;
                     } else if (cmd === "whoami") {
                         output.innerHTML += `<div>apex_user</div>`;
                     } else if (cmd === "clear") {
                         output.innerHTML = "";
                     } else if (cmd === "date") {
                         output.innerHTML += `<div>${new Date().toLocaleString()}</div>`;
+                    } else if (cmd === "apexfetch") {
+                        output.innerHTML += `
+                            <div style="display:flex; gap:10px; margin-top:5px; color:var(--accent-color)">
+                                <div style="font-size:1.5em">🚀</div>
+                                <div>
+                                    <b>ApexOS v1.0.0</b><br>
+                                    Kernel: ApexKernel 0.1.0<br>
+                                    VFS: Online<br>
+                                    Uptime: ${Math.floor(performance.now()/60000)}m
+                                </div>
+                            </div>
+                        `;
+                    } else if (cmd.startsWith("theme ")) {
+                        const theme = cmd.split(" ")[1];
+                        const themes = {
+                            "matrix": "default",
+                            "cyberpunk": "theme-cyberpunk",
+                            "light": "theme-light",
+                            "classic": "theme-classic"
+                        };
+                        if (themes[theme]) {
+                            const target = themes[theme];
+                            document.body.className = target === 'default' ? '' : target;
+                            localStorage.setItem('apex_theme', target);
+                            output.innerHTML += `<div>Theme changed to ${theme}.</div>`;
+                        } else {
+                            output.innerHTML += `<div>Available themes: matrix, cyberpunk, light, classic</div>`;
+                        }
                     } else if (cmd !== "") {
                         output.innerHTML += `<div>Unknown command: ${cmd}</div>`;
                     }
@@ -253,7 +331,7 @@ const Apps = {
         title: "File Explorer",
         icon: "",
         launch: () => {
-            const winId = `explorer-${Date.now()}`;
+            const winId = `explorer-${Math.random().toString(36).substring(2, 9)}`;
             
             const renderFiles = () => {
                 const files = Kernel.listDir().split('  ');
@@ -300,8 +378,8 @@ const Apps = {
         title: "Calculator",
         icon: "󰃬",
         launch: () => {
-            const winId = `calc-${Date.now()}`;
-            wm.createWindow("Calculator", `
+            const winId = `calc-${Math.random().toString(36).substring(2, 9)}`;
+            const win = wm.createWindow("Calculator", `
                 <div id="${winId}-display" style="background:#000; color:var(--text-color); padding:10px; text-align:right; margin-bottom:10px; border:1px solid var(--accent-color); min-height:40px; font-size:1.2em">0</div>
                 <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:5px">
                     ${['7','8','9','/','4','5','6','*','1','2','3','-','0','C','=','+'].map(b => 
@@ -311,8 +389,8 @@ const Apps = {
             `);
 
             let current = "";
-            const display = document.getElementById(`${winId}-display`);
-            const btns = document.querySelectorAll(`#win-${winId.split('-')[1]} .calc-btn`);
+            const display = win.querySelector(`#${winId}-display`);
+            const btns = win.querySelectorAll(`.calc-btn`);
             
             btns.forEach(btn => {
                 btn.onclick = () => {
@@ -348,9 +426,9 @@ const Apps = {
                     
                     <div style="margin-top:20px; border-top:1px solid #333; padding-top:10px">
                         <strong>ApexOS v1.0.0</strong><br>
-                        Created by: <a href="https://nshettigar.me/" target="_blank" style="color:var(--text-color)">Naman Shettigar</a><br>
                         VFS Status: Online<br>
-                        Persistence: Enabled
+                        Persistence: Enabled<br>
+                        <p style="font-size:0.8em; margin-top:10px; opacity:0.7">System details available in 'About ApexOS'</p>
                     </div>
                 </div>
             `);
@@ -362,6 +440,64 @@ const Apps = {
             };
         }
     },
+    sysmon: {
+        title: "System Monitor",
+        icon: "📊",
+        launch: () => {
+            const winId = `sysmon-${Math.random().toString(36).substring(2, 9)}`;
+            wm.createWindow("System Monitor", `
+                <div style="padding:10px">
+                    <p>OS: ApexOS v1.0.0</p>
+                    <p>Kernel: ApexKernel 0.1.0</p>
+                    <p>VFS: Online (${Object.keys(VFS["/"]["home"]["user"]).length} files)</p>
+                    <div style="margin-top:10px">
+                        <label>CPU Usage:</label>
+                        <div style="width:100%; height:10px; background:#222; margin-top:5px; border:1px solid #444">
+                            <div id="${winId}-cpu" style="width:15%; height:100%; background:var(--accent-color)"></div>
+                        </div>
+                    </div>
+                    <div style="margin-top:10px">
+                        <label>Memory Usage:</label>
+                        <div style="width:100%; height:10px; background:#222; margin-top:5px; border:1px solid #444">
+                            <div id="${winId}-mem" style="width:42%; height:100%; background:var(--accent-color)"></div>
+                        </div>
+                    </div>
+                </div>
+            `);
+
+            const interval = setInterval(() => {
+                const cpu = document.getElementById(`${winId}-cpu`);
+                const mem = document.getElementById(`${winId}-mem`);
+                if (!cpu || !mem) {
+                    clearInterval(interval);
+                    return;
+                }
+                cpu.style.width = (Math.random() * 20 + 5) + "%";
+                mem.style.width = (Math.random() * 10 + 40) + "%";
+            }, 2000);
+        }
+    },
+    about: {
+        title: "About",
+        icon: "ℹ️",
+        launch: () => {
+            const win = wm.createWindow("About ApexOS", `
+                <div style="text-align:center; padding:10px;">
+                    <h2 style="color:var(--text-color)">🚀 ApexOS v1.0.0</h2>
+                    <p>Created by: <b>Naman Shettigar</b></p>
+                    <p>A retro-modern WebOS experience.</p>
+                    <hr style="border:0; border-top:1px solid #333; margin:15px 0;">
+                    <p>Built with Vanilla JS, CSS, and HTML.</p>
+                    <p>Hosted at: <a href="https://nshettigar.me/WebOS/" target="_blank" style="color:var(--text-color)">nshettigar.me/WebOS/</a></p>
+                    <br>
+                    <button class="about-close-btn" style="padding:5px 10px; background:var(--accent-color); color:#000; border:none; cursor:pointer">Close</button>
+                </div>
+            `);
+            win.querySelector('.about-close-btn').onclick = () => {
+                win.querySelector('.control-btn.close-btn').click();
+            };
+        }
+    },
     editor: {
         title: "ApexPad",
         icon: "📝",
@@ -369,8 +505,8 @@ const Apps = {
             const fileName = initialFile || "untitled.txt";
             const content = initialFile ? Kernel.getFile(fileName) : "";
             
-            const winId = `editor-${Date.now()}`;
-            wm.createWindow("ApexPad", `
+            const winId = `editor-${Math.random().toString(36).substring(2, 9)}`;
+            const win = wm.createWindow("ApexPad", `
                 <div style="margin-bottom:5px">Editing: <input type="text" id="${winId}-filename" value="${fileName}" style="background:transparent; border:none; color:var(--accent-color); font-family:inherit"></div>
                 <textarea id="${winId}-text" style="width:100%; height:200px; background:#000; color:var(--text-color); border:1px solid var(--accent-color); font-family:inherit; padding:10px;">${content}</textarea>
                 <button id="${winId}-save" style="margin-top:5px; padding:5px; background:var(--accent-color); color:#000; border:none; cursor:pointer">Save to VFS</button>
@@ -393,15 +529,30 @@ document.addEventListener('DOMContentLoaded', () => {
     // Start Menu Toggle
     const startBtn = document.querySelector('.start-btn');
     const startMenu = document.getElementById('start-menu');
+    const ctxMenu = document.getElementById('context-menu');
 
     startBtn.onclick = (e) => {
         e.stopPropagation();
         startMenu.classList.toggle('hidden');
+        ctxMenu.classList.add('hidden');
     };
+
+    // Context Menu Logic
+    document.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        ctxMenu.style.top = `${e.clientY}px`;
+        ctxMenu.style.left = `${e.clientX}px`;
+        ctxMenu.classList.remove('hidden');
+        startMenu.classList.add('hidden');
+    });
 
     document.addEventListener('click', () => {
         startMenu.classList.add('hidden');
+        ctxMenu.classList.add('hidden');
     });
+
+    // Make Apps global so onclick in HTML works
+    window.Apps = Apps;
 
     // Handle Start Menu App Launches
     document.querySelectorAll('.start-menu-item').forEach(item => {
@@ -429,18 +580,23 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         if (sessionStorage.getItem('apex_booted_once')) return;
         
-        wm.createWindow('Welcome', `
+        const welcomeWin = wm.createWindow('Welcome', `
             <div style="text-align:center; padding:10px;">
                 <h2 style="color:var(--text-color)">🚀 ApexOS v1.0.0</h2>
-                <p>Welcome, <b>Naman Shettigar</b>.</p>
+                <p>System Initialized Successfully.</p>
                 <hr style="border:0; border-top:1px solid #333; margin:15px 0;">
-                <p>This is a functional WebOS environment built with a "human" touch.</p>
+                <p>Welcome to your retro-modern workspace.</p>
                 <br>
-                <p>Visit the creator: <a href="https://nshettigar.me" target="_blank" style="color:var(--text-color)">nshettigar.me</a></p>
+                <p>Type 'help' in the terminal or use the APEX menu to begin.</p>
                 <br>
-                <button onclick="this.closest('.window').querySelector('.close-btn').click()" style="padding:10px 20px; background:var(--accent-color); color:#000; border:none; cursor:pointer; font-weight:bold;">GET STARTED</button>
+                <button class="welcome-start-btn" style="padding:10px 20px; background:var(--accent-color); color:#000; border:none; cursor:pointer; font-weight:bold;">GET STARTED</button>
             </div>
         `);
+
+        welcomeWin.querySelector('.welcome-start-btn').onclick = () => {
+            welcomeWin.querySelector('.control-btn.close-btn').click();
+        };
+
         sessionStorage.setItem('apex_booted_once', 'true');
     }, 5500);
 });

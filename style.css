@@ -117,6 +117,12 @@ body {
 
 #clock {
     margin-left: auto;
+    cursor: pointer;
+    padding: 0 10px;
+}
+
+#clock:hover {
+    background: rgba(255,255,255,0.1);
 }
 
 #window-container {
@@ -196,7 +202,35 @@ body {
     cursor: move;
     display: flex;
     justify-content: space-between;
-    user-select: none; /* Keep it clean during drags */
+    align-items: center;
+    user-select: none;
+}
+
+.window-controls {
+    display: flex;
+    gap: 8px;
+}
+
+.control-btn {
+    cursor: pointer;
+    font-family: monospace;
+    font-weight: bold;
+    padding: 0 4px;
+}
+
+.control-btn:hover {
+    background: rgba(0,0,0,0.2);
+}
+
+.window.maximized {
+    top: 40px !important; /* Below taskbar */
+    left: 0 !important;
+    width: 100% !important;
+    height: calc(100vh - 40px) !important;
+}
+
+.window.minimized {
+    display: none;
 }
 
 .window-content {
@@ -206,6 +240,27 @@ body {
 
 .hidden {
     display: none !important;
+}
+
+/* Context Menu */
+#context-menu {
+    position: absolute;
+    background: var(--taskbar-bg);
+    border: 1px solid var(--accent-color);
+    box-shadow: 3px 3px 10px rgba(0,0,0,0.5);
+    z-index: 3000;
+    min-width: 150px;
+}
+
+.ctx-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+.ctx-item:hover {
+    background: var(--accent-color);
+    color: #000;
 }
 
 /* Terminal styles */
