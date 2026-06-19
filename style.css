@@ -1,0 +1,238 @@
+:root {
+    --bg-color: #0c0c0c;
+    --text-color: #00ff41;
+    --accent-color: #008f11;
+    --window-bg: #1a1a1a;
+    --taskbar-bg: #222;
+    --font-main: 'Courier New', Courier, monospace;
+}
+
+/* Theme classes */
+body.theme-cyberpunk {
+    --bg-color: #2b0031;
+    --text-color: #ff00ff;
+    --accent-color: #00ffff;
+    --window-bg: #120015;
+    --taskbar-bg: #3d0046;
+}
+
+body.theme-light {
+    --bg-color: #f0f0f0;
+    --text-color: #333;
+    --accent-color: #005fcc;
+    --window-bg: #fff;
+    --taskbar-bg: #ddd;
+    --font-main: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body.theme-classic {
+    --bg-color: #c0c0c0;
+    --text-color: #000;
+    --accent-color: #000080;
+    --window-bg: #fff;
+    --taskbar-bg: #c0c0c0;
+    --font-main: 'MS Sans Serif', Arial, sans-serif;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: var(--font-main);
+    overflow: hidden;
+    height: 100vh;
+}
+
+/* Boot sequence styling */
+#boot-screen {
+    padding: 20px;
+    height: 100%;
+    display: flex;
+    flex-direction: column-reverse; /* Newest logs at bottom */
+}
+
+#boot-log {
+    white-space: pre-wrap;
+    line-height: 1.4;
+}
+
+.cursor {
+    width: 10px;
+    height: 1.2em;
+    background-color: var(--text-color);
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    50% { opacity: 0; }
+}
+
+/* Desktop layout */
+#desktop {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#taskbar {
+    height: 40px;
+    background: var(--taskbar-bg);
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    border-bottom: 1px solid #333;
+    z-index: 1000;
+}
+
+.start-btn {
+    font-weight: bold;
+    cursor: pointer;
+    padding: 5px 15px;
+    border: 1px solid var(--text-color);
+    margin-right: 20px;
+}
+
+#active-apps {
+    display: flex;
+    gap: 5px;
+}
+
+.taskbar-item {
+    padding: 5px 10px;
+    border: 1px solid #444;
+    background: #333;
+    font-size: 0.8em;
+    cursor: pointer;
+    user-select: none;
+}
+
+.taskbar-item:hover {
+    border-color: var(--text-color);
+}
+
+#clock {
+    margin-left: auto;
+}
+
+#window-container {
+    flex: 1;
+    position: relative;
+    padding: 20px;
+    z-index: 5;
+}
+
+/* Start Menu */
+#start-menu {
+    position: absolute;
+    bottom: 40px;
+    left: 0;
+    width: 200px;
+    background: var(--taskbar-bg);
+    border: 1px solid var(--accent-color);
+    z-index: 2000;
+    padding: 5px;
+}
+
+.start-menu-item {
+    padding: 10px;
+    cursor: pointer;
+    border-bottom: 1px solid #333;
+}
+
+.start-menu-item:hover {
+    background: var(--accent-color);
+    color: #000;
+}
+
+/* Desktop Icons */
+#desktop-icons {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    z-index: 1;
+}
+
+.desktop-icon {
+    width: 64px;
+    text-align: center;
+    cursor: pointer;
+    padding: 5px;
+}
+
+.desktop-icon:hover {
+    background: rgba(0, 255, 65, 0.1);
+}
+
+.icon-graphic {
+    font-size: 2em;
+    margin-bottom: 5px;
+}
+
+.icon-label {
+    font-size: 0.8em;
+}
+
+/* Window styles */
+.window {
+    position: absolute;
+    min-width: 300px;
+    background: var(--window-bg);
+    border: 1px solid var(--accent-color);
+    box-shadow: 5px 5px 0px rgba(0,0,0,0.5);
+}
+
+.window-header {
+    background: var(--accent-color);
+    color: #000;
+    padding: 5px 10px;
+    cursor: move;
+    display: flex;
+    justify-content: space-between;
+    user-select: none; /* Keep it clean during drags */
+}
+
+.window-content {
+    padding: 10px;
+    height: 100%;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Terminal styles */
+.terminal-output {
+    height: 250px;
+    overflow-y: auto;
+    font-size: 0.9em;
+    margin-bottom: 5px;
+    padding: 5px;
+    background: #000;
+}
+
+.terminal-input-line {
+    display: flex;
+}
+
+.terminal-input-line span {
+    margin-right: 5px;
+    color: var(--accent-color);
+}
+
+.terminal-input {
+    background: transparent;
+    border: none;
+    color: var(--text-color);
+    font-family: inherit;
+    font-size: inherit;
+    flex: 1;
+    outline: none;
+}

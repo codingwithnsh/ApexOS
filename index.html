@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ApexOS | Retro-Modern WebOS</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="boot-screen">
+        <div class="cursor"></div>
+        <div id="boot-log"></div>
+    </div>
+
+    <main id="desktop" class="hidden">
+        <nav id="taskbar">
+            <div class="start-btn">APEX</div>
+            <div id="active-apps"></div>
+            <div id="clock">00:00:00</div>
+        </nav>
+
+        <div id="desktop-icons"></div>
+
+        <div id="start-menu" class="hidden">
+            <div class="start-menu-item" data-app="terminal">Terminal</div>
+            <div class="start-menu-item" data-app="explorer">File Explorer</div>
+            <div class="start-menu-item" data-app="editor">Text Editor</div>
+            <div class="start-menu-item" data-app="calc">Calculator</div>
+            <div class="start-menu-item" data-app="settings">Settings</div>
+        </div>
+
+        <div id="window-container"></div>
+    </main>
+
+    <script src="index.js"></script>
+</body>
+</html>
