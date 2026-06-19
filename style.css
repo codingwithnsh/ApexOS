@@ -290,6 +290,33 @@ body {
     padding: 0 10px;
 }
 
+#show-desktop {
+    width: 10px;
+    height: 100%;
+    border-left: 1px solid var(--accent-color);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+#show-desktop:hover {
+    background: rgba(0, 255, 65, 0.2);
+}
+
+.start-menu-search {
+    padding: 10px;
+    border-bottom: 1px solid var(--accent-color);
+}
+
+.start-menu-search input {
+    width: 100%;
+    background: #000;
+    border: 1px solid var(--accent-color);
+    color: var(--accent-color);
+    padding: 5px;
+    font-family: 'Courier New', Courier, monospace;
+    outline: none;
+}
+
 #clock:hover {
     background: rgba(255,255,255,0.1);
 }

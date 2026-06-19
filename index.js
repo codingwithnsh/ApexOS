@@ -27,6 +27,13 @@ let VFS = {
 };
 
 // --- Storage Helper ---
+const ICON_GRID = {
+    width: 100,
+    height: 110,
+    margin: 20,
+    topOffset: 60
+};
+
 const Storage = {
     save() {
         localStorage.setItem('apex_vfs', JSON.stringify(VFS));
@@ -300,6 +307,14 @@ const System = {
                 if (runDialog) runDialog.remove();
             }
         });
+    },
+
+    sortIcons() {
+        const appsWithIcons = ["terminal", "browser", "explorer", "editor", "notes", "calc", "clock", "settings", "snake", "paint", "weather", "sysinfo"];
+        appsWithIcons.forEach(appKey => {
+            localStorage.removeItem(`icon-pos-${appKey}`);
+        });
+        if (this.refreshDesktopIcons) this.refreshDesktopIcons();
     }
 };
 
@@ -418,6 +433,19 @@ class WindowManager {
         });
     }
 
+    showDesktop() {
+        const allMinimized = this.windows.every(w => w.element.classList.contains('minimized'));
+        
+        this.windows.forEach(w => {
+            if (allMinimized) {
+                w.element.classList.remove('minimized');
+            } else {
+                w.element.classList.add('minimized');
+            }
+        });
+        this.updateTaskbar();
+    }
+
     makeDraggable(element, isIcon = false) {
         const handle = isIcon ? element : element.querySelector('.window-header');
         let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
@@ -448,6 +476,16 @@ class WindowManager {
 
                 if (isIcon) {
                     element.style.zIndex = 150; // Match the new container z-index
+                    
+                    // Snap to grid
+                    const left = parseInt(element.style.left);
+                    const top = parseInt(element.style.top);
+                    const snappedLeft = Math.round((left - ICON_GRID.margin) / ICON_GRID.width) * ICON_GRID.width + ICON_GRID.margin;
+                    const snappedTop = Math.round((top - ICON_GRID.topOffset) / ICON_GRID.height) * ICON_GRID.height + ICON_GRID.topOffset;
+                    
+                    element.style.left = `${snappedLeft}px`;
+                    element.style.top = `${snappedTop}px`;
+
                     // Save position
                     const appKey = element.getAttribute('data-app');
                     localStorage.setItem(`icon-pos-${appKey}`, JSON.stringify({
@@ -1233,6 +1271,24 @@ document.addEventListener('DOMContentLoaded', () => {
         e.stopPropagation();
         startMenu.classList.toggle('hidden');
         ctxMenu.classList.add('hidden');
+        if (!startMenu.classList.contains('hidden')) {
+            document.getElementById('start-search').focus();
+        }
+    };
+
+    // Start Menu Search
+    const startSearch = document.getElementById('start-search');
+    startSearch.onclick = (e) => e.stopPropagation();
+    startSearch.oninput = (e) => {
+        const query = e.target.value.toLowerCase();
+        document.querySelectorAll('.start-menu-item').forEach(item => {
+            const text = item.textContent.toLowerCase();
+            if (text.includes(query)) {
+                item.style.display = 'block';
+            } else {
+                item.style.display = 'none';
+            }
+        });
     };
 
     // Context Menu Logic
@@ -1251,6 +1307,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Make Apps global so onclick in HTML works
     window.Apps = Apps;
+    window.System = System;
+    System.refreshDesktopIcons = refreshDesktopIcons;
 
     // Handle Start Menu App Launches
     document.querySelectorAll('.start-menu-item').forEach(item => {
@@ -1281,19 +1339,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 icon.style.left = pos.left;
                 icon.style.zIndex = 150;
             } else {
-                // Smart grid placement: 100px wide, 110px tall slots
-                const iconWidth = 100;
-                const iconHeight = 110;
-                const margin = 20;
-                const desktopHeight = window.innerHeight - 60; // Subtract taskbar
+                // Smart grid placement
+                const desktopHeight = window.innerHeight - ICON_GRID.topOffset;
                 
-                const iconsPerCol = Math.max(1, Math.floor(desktopHeight / iconHeight));
+                const iconsPerCol = Math.max(1, Math.floor(desktopHeight / ICON_GRID.height));
                 const col = Math.floor(index / iconsPerCol);
                 const row = index % iconsPerCol;
                 
                 icon.style.position = 'absolute';
-                icon.style.left = `${margin + (col * iconWidth)}px`;
-                icon.style.top = `${margin + (row * iconHeight)}px`;
+                icon.style.left = `${ICON_GRID.margin + (col * ICON_GRID.width)}px`;
+                icon.style.top = `${ICON_GRID.topOffset + (row * ICON_GRID.height)}px`;
             }
 
             const iconHtml = app.icon.endsWith('.png') ? `<img src="${app.icon}" alt="${app.title}" style="pointer-events:none">` : app.icon;
