@@ -1399,7 +1399,7 @@ const Apps = {
                     <input type="text" id="${winId}-url" value="https://www.wikipedia.org" style="flex:1; background:#000; border:1px solid #444; color:#fff; padding:2px 5px">
                     <button id="${winId}-go" style="background:var(--accent-color); border:none; padding:2px 10px; cursor:pointer">Go</button>
                 </div>
-                <iframe id="${winId}-frame" src="https://www.wikipedia.org" style="width:100%; height:calc(100% - 35px); border:none; background:#fff"></iframe>
+                <iframe id="${winId}-frame" src="https://www.google.com" style="width:100%; height:calc(100% - 35px); border:none; background:#fff"></iframe>
             `, 600, 450, 'browser');
 
             const go = () => {
