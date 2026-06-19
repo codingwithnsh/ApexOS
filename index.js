@@ -1308,7 +1308,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Make Apps global so onclick in HTML works
     window.Apps = Apps;
     window.System = System;
-    System.refreshDesktopIcons = refreshDesktopIcons;
 
     // Handle Start Menu App Launches
     document.querySelectorAll('.start-menu-item').forEach(item => {
@@ -1387,6 +1386,8 @@ document.addEventListener('DOMContentLoaded', () => {
             desktopIcons.appendChild(icon);
         });
     };
+
+    System.refreshDesktopIcons = refreshDesktopIcons;
 
     refreshDesktopIcons();
     window.addEventListener('resize', () => {
