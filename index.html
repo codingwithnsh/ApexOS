@@ -25,6 +25,12 @@
 
         <nav id="taskbar">
             <div class="start-btn">APEX</div>
+            <div id="desktop-switcher" style="display:flex; gap:5px; margin:0 15px; align-items:center">
+                <span style="font-size:0.7em; opacity:0.6">DESK:</span>
+                <button onclick="wm.switchDesktop(1)" style="background:#333; color:white; border:none; padding:2px 8px; cursor:pointer; border-radius:3px">1</button>
+                <button onclick="wm.switchDesktop(2)" style="background:#333; color:white; border:none; padding:2px 8px; cursor:pointer; border-radius:3px">2</button>
+                <button onclick="wm.switchDesktop(3)" style="background:#333; color:white; border:none; padding:2px 8px; cursor:pointer; border-radius:3px">3</button>
+            </div>
             <div id="active-apps"></div>
             <div class="taskbar-status" onclick="System.toggleControlCenter()">
                 <span id="bat-status"></span>

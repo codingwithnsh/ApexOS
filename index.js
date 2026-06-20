@@ -83,43 +83,214 @@ const Storage = {
             };
             request.onerror = (e) => reject(e.target.error);
         });
+    },
+    async wipe() {
+        if (this.db) this.db.close();
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.deleteDatabase(DB_NAME);
+            request.onsuccess = () => resolve();
+            request.onerror = (e) => reject(e.target.error);
+        });
+    }
+};
+
+// --- Registry System ---
+const Registry = {
+    HKLM: {},
+    HKCU: {},
+    init() {
+        try {
+            this.HKLM = JSON.parse(localStorage.getItem('registry_hklm') || '{}');
+            this.HKCU = JSON.parse(localStorage.getItem('registry_hkcu') || '{}');
+            
+            // Default HKLM settings
+            if (!this.HKLM['Software\\System\\Version']) {
+                this.HKLM['Software\\System\\Version'] = 'ApexOS 1.5.0';
+                this.HKLM['Software\\System\\Theme'] = 'theme-sleek';
+                this.save();
+            }
+        } catch (e) {
+            console.error("Registry init failed", e);
+        }
+    },
+    save() {
+        localStorage.setItem('registry_hklm', JSON.stringify(this.HKLM));
+        localStorage.setItem('registry_hkcu', JSON.stringify(this.HKCU));
+    },
+    get(path, defaultValue = null) {
+        if (path.startsWith('HKLM\\')) return this.HKLM[path.substring(5)] ?? defaultValue;
+        if (path.startsWith('HKCU\\')) return this.HKCU[path.substring(5)] ?? defaultValue;
+        return defaultValue;
+    },
+    set(path, value) {
+        if (path.startsWith('HKLM\\')) this.HKLM[path.substring(5)] = value;
+        else if (path.startsWith('HKCU\\')) this.HKCU[path.substring(5)] = value;
+        this.save();
+    }
+};
+
+// --- Process Manager ---
+const ProcessManager = {
+    processes: [],
+    nextPid: 101,
+    init() {
+        this.processes = [];
+    },
+    createProcess(name, appKey) {
+        const proc = {
+            pid: this.nextPid++,
+            name: name,
+            appKey: appKey,
+            cpu: 0,
+            memory: Math.floor(Math.random() * 50) + 15,
+            status: 'Running'
+        };
+        this.processes.push(proc);
+        return proc;
+    },
+    killProcess(pid) {
+        this.processes = this.processes.filter(p => p.pid !== pid);
+    },
+    getProcesses() {
+        // Simulate CPU
+        this.processes.forEach(p => {
+            p.cpu = Math.floor(Math.random() * 12) + 1;
+        });
+        return this.processes;
+    }
+};
+
+// --- Services Manager ---
+const ServicesManager = {
+    services: [
+        { name: "Network Service", status: "Running", id: 'network' },
+        { name: "Audio Service", status: "Running", id: 'audio' },
+        { name: "Clock Service", status: "Running", id: 'clock' },
+        { name: "Theme Service", status: "Running", id: 'theme' }
+    ],
+    init() {
+        console.log("Kernel: Services initialized");
+    },
+    start(id) {
+        const s = this.services.find(s => s.id === id);
+        if (s) s.status = "Running";
+    },
+    stop(id) {
+        const s = this.services.find(s => s.id === id);
+        if (s) s.status = "Stopped";
     }
 };
 
 const Kernel = {
-    // ... boot logs remain same
-    currentDir: "/home/user",
-    
-    // Get the object at current directory
-    getDirObj(path = this.currentDir) {
-        let current = VFS["/"];
-        const parts = path.split('/').filter(p => p);
-        for (const part of parts) {
-            if (current[part] && typeof current[part] === 'object') {
-                current = current[part];
-            } else {
-                return null;
+    Filesystem: {
+        currentDir: "/home/user",
+        resolvePath(path) {
+            if (!path) return this.currentDir;
+            let absolute = path.startsWith('/') ? path : (this.currentDir === '/' ? '/' + path : this.currentDir + '/' + path);
+            const parts = absolute.split('/').filter(p => p);
+            const resolvedParts = [];
+            for (const part of parts) {
+                if (part === '.') continue;
+                if (part === '..') { resolvedParts.pop(); }
+                else { resolvedParts.push(part); }
             }
+            return '/' + resolvedParts.join('/');
+        },
+        getDirObj(path = this.currentDir) {
+            let current = VFS["/"];
+            const resolved = this.resolvePath(path);
+            const parts = resolved.split('/').filter(p => p);
+            for (const part of parts) {
+                if (current[part] && typeof current[part] === 'object') {
+                    current = current[part];
+                } else {
+                    return null;
+                }
+            }
+            return current;
+        },
+        getFile(path) {
+            const resolved = this.resolvePath(path);
+            const parts = resolved.split('/').filter(p => p);
+            const fileName = parts.pop();
+            const dirPath = '/' + parts.join('/');
+            const dir = this.getDirObj(dirPath);
+            return (dir && typeof dir[fileName] !== 'object') ? dir[fileName] : null;
+        },
+        async saveFile(path, content) {
+            const resolved = this.resolvePath(path);
+            const parts = resolved.split('/').filter(p => p);
+            const fileName = parts.pop();
+            const dirPath = '/' + parts.join('/');
+            const dir = this.getDirObj(dirPath);
+            if (dir) {
+                dir[fileName] = content;
+                await Storage.save();
+                System.refreshDesktopIcons();
+                console.log(`Saved ${path}`);
+                System.notify(`File saved: ${path}`);
+                return true;
+            }
+            return false;
+        },
+        async deleteFile(path) {
+            const resolved = this.resolvePath(path);
+            const parts = resolved.split('/').filter(p => p);
+            const fileName = parts.pop();
+            const dirPath = '/' + parts.join('/');
+            const dir = this.getDirObj(dirPath);
+            if (dir && dir[fileName] !== undefined) {
+                delete dir[fileName];
+                await Storage.save();
+                return true;
+            }
+            return false;
+        },
+        async makeDir(path) {
+            const resolved = this.resolvePath(path);
+            const parts = resolved.split('/').filter(p => p);
+            const dirName = parts.pop();
+            const parentPath = '/' + parts.join('/');
+            const parentDir = this.getDirObj(parentPath);
+            if (parentDir && !parentDir[dirName]) {
+                parentDir[dirName] = {};
+                await Storage.save();
+                return true;
+            }
+            return false;
+        },
+        async rename(path, newName) {
+            const dir = this.getDirObj();
+            if (dir && dir[path] !== undefined) {
+                dir[newName] = dir[path];
+                delete dir[path];
+                await Storage.save();
+                return true;
+            }
+            return false;
+        },
+        listDir(path) {
+            const dir = this.getDirObj(path);
+            if (!dir) return "Directory not found";
+            return Object.keys(dir).map(name => {
+                const isDir = typeof dir[name] === 'object';
+                return isDir ? `<span style="color:#5c5cff">[DIR] ${name}</span>` : name;
+            }).join("  ");
         }
-        return current;
     },
+    Registry: Registry,
+    ProcessManager: ProcessManager,
+    Services: ServicesManager,
+    WindowManager: null,
 
-    getFile(path) {
-        const dir = this.getDirObj();
-        return dir ? dir[path] : null;
-    },
-
-    async saveFile(path, content) {
-        const dir = this.getDirObj();
-        if (dir) {
-            dir[path] = content;
-            await Storage.save();
-            System.refreshDesktopIcons();
-            console.log(`Saved ${path}`);
-            System.notify(`File saved: ${path}`);
-        }
-    },
-
+    get currentDir() { return this.Filesystem.currentDir; },
+    set currentDir(val) { this.Filesystem.currentDir = val; },
+    getDirObj(path) { return this.Filesystem.getDirObj(path); },
+    getFile(path) { return this.Filesystem.getFile(path); },
+    async saveFile(path, content) { return this.Filesystem.saveFile(path, content); },
+    async deleteFile(path) { return this.Filesystem.deleteFile(path); },
+    async makeDir(name) { return this.Filesystem.makeDir(name); },
+    listDir(path) { return this.Filesystem.listDir(path); },
     async downloadFile(path) {
         const content = this.getFile(path);
         if (content !== null) {
@@ -133,7 +304,6 @@ const Kernel = {
             System.notify(`Downloading ${path}...`, "info");
         }
     },
-
     async uploadFile(file) {
         const reader = new FileReader();
         reader.onload = async (e) => {
@@ -143,50 +313,61 @@ const Kernel = {
         reader.readAsText(file);
     },
 
-    async deleteFile(path) {
-        const dir = this.getDirObj();
-        if (dir && dir[path] !== undefined) {
-            delete dir[path];
-            await Storage.save();
-            return true;
-        }
-        return false;
-    },
-
-    async makeDir(name) {
-        const dir = this.getDirObj();
-        if (dir && !dir[name]) {
-            dir[name] = {};
-            await Storage.save();
-            return true;
-        }
-        return false;
-    },
-
-    listDir() {
-        const dir = this.getDirObj();
-        if (!dir) return "";
-        return Object.keys(dir).map(name => {
-            const isDir = typeof dir[name] === 'object';
-            return isDir ? `[DIR] ${name}` : name;
-        }).join("  ");
-    },
-
     async boot() {
+        this.Registry.init();
+        this.ProcessManager.init();
+        this.Services.init();
+        this.WindowManager = wm;
+
         await Storage.load(); // Grab user's files before we start the show
 
         // Let's play the boot sound
         const bootSound = new Audio('assets/boot-sound.wav');
         bootSound.play().catch(e => console.log("Audio play failed:", e));
-        const savedTheme = localStorage.getItem('apex_theme');
-        if (savedTheme && savedTheme !== 'default') {
-            document.body.className = savedTheme;
-        }
+        
+        // --- Apply System Settings ---
+        const savedTheme = this.Registry.get('HKLM\\Software\\System\\Theme', 'theme-sleek');
+        document.body.className = savedTheme;
 
-        const savedWallpaper = localStorage.getItem('apex_wallpaper');
+        const savedAccent = this.Registry.get('HKCU\\Control Panel\\Colors\\Accent', '');
+        if (savedAccent) document.documentElement.style.setProperty('--accent-color', savedAccent);
+
+        const savedFont = this.Registry.get('HKCU\\Control Panel\\Desktop\\Font', 'default');
+        if (savedFont !== 'default') document.documentElement.style.setProperty('--font-main', savedFont);
+
+        const savedWallpaper = this.Registry.get('HKCU\\Control Panel\\Desktop\\Wallpaper', '');
         if (savedWallpaper && document.body.classList.contains('theme-sleek')) {
             document.body.style.backgroundImage = `url('${savedWallpaper}')`;
         }
+
+        // Apply Hardware Settings
+        const savedBrightness = this.Registry.get('HKCU\\Control Panel\\Desktop\\Brightness', 100);
+        System.setBrightness(savedBrightness, true);
+
+        const savedVolume = this.Registry.get('HKCU\\Control Panel\\Desktop\\Volume', 80);
+        System.setVolume(savedVolume, true);
+
+        if (this.Registry.get('HKCU\\Control Panel\\ControlCenter\\Night Light', false)) {
+            let overlay = document.getElementById('night-light-overlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'night-light-overlay';
+                document.body.appendChild(overlay);
+            }
+            overlay.style.display = 'block';
+        }
+
+        // Accessibility
+        if (this.Registry.get('HKCU\\Control Panel\\Accessibility\\HighContrast', false)) document.body.classList.add('accessibility-high-contrast');
+        if (this.Registry.get('HKCU\\Control Panel\\Accessibility\\LargeText', false)) document.body.classList.add('accessibility-large-text');
+        if (this.Registry.get('HKCU\\Control Panel\\Accessibility\\NoAnimations', false)) document.body.classList.add('accessibility-no-animations');
+
+        // User Profile
+        const username = this.Registry.get('HKCU\\Software\\ApexOS\\User\\Name', 'Apex User');
+        const userSpan = document.querySelector('.user-info span');
+        const userAvatar = document.querySelector('.user-avatar');
+        if (userSpan) userSpan.textContent = username;
+        if (userAvatar) userAvatar.textContent = username[0];
 
         const logContainer = document.getElementById('boot-log');
         const bootScreen = document.getElementById('boot-screen');
@@ -299,25 +480,64 @@ const System = {
     notifications: [],
     
     notify(message, type = 'info') {
+        const id = Date.now();
+        const notification = { id, message, type, time: new Date().toLocaleTimeString() };
+        this.notifications.push(notification);
+        
+        // Update Registry History
+        let history = Kernel.Registry.get('HKCU\\Software\\Notifications\\History', []);
+        history.push(notification);
+        if (history.length > 20) history.shift();
+        Kernel.Registry.set('HKCU\\Software\\Notifications\\History', history);
+
         const container = document.getElementById('notification-container');
         if (!container) return;
         
         const toast = document.createElement('div');
         toast.className = `notification toast-${type}`;
         toast.innerHTML = `
-            <div style="font-weight:bold; margin-bottom:5px">${type.toUpperCase()}</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px">
+                <span style="font-weight:bold">${type.toUpperCase()}</span>
+                <span style="font-size:0.7em; opacity:0.6">${notification.time}</span>
+            </div>
             <div>${message}</div>
         `;
         
         container.appendChild(toast);
         
-        // Sound effect (mock)
-        const audio = new Audio(); // Would be a real file in a real OS
+        // Sound effect based on type
+        if (type === 'error' || type === 'warning') {
+            console.log("🔊 Playing alert sound...");
+        }
         
         setTimeout(() => {
             toast.style.animation = 'notifySlideIn 0.3s ease-in reverse forwards';
             setTimeout(() => toast.remove(), 300);
         }, 5000);
+    },
+
+    showNotificationHistory() {
+        const history = Kernel.Registry.get('HKCU\\Software\\Notifications\\History', []);
+        let content = `<div style="padding:15px; color:white">
+            <h3>Notification History</h3>
+            ${history.length === 0 ? '<p>No notifications yet.</p>' : ''}
+            <div style="display:flex; flex-direction:column; gap:10px; margin-top:15px">
+        `;
+        
+        history.reverse().forEach(n => {
+            content += `
+                <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; border-left:4px solid var(--accent-color)">
+                    <div style="display:flex; justify-content:space-between; font-size:0.8em; margin-bottom:5px">
+                        <span style="color:var(--accent-color); font-weight:bold">${n.type.toUpperCase()}</span>
+                        <span style="opacity:0.6">${n.time}</span>
+                    </div>
+                    <div>${n.message}</div>
+                </div>
+            `;
+        });
+        
+        content += `</div></div>`;
+        wm.createWindow("Notification Center", content, 350, 450, 'settings');
     },
 
     toggleControlCenter() {
@@ -327,7 +547,7 @@ const System = {
             // Update active states
             cc.querySelectorAll('.cc-tile').forEach(tile => {
                 const feature = tile.querySelector('span:last-child').textContent;
-                if (localStorage.getItem(`cc_${feature}`) === 'true') {
+                if (Kernel.Registry.get(`HKCU\\Control Panel\\ControlCenter\\${feature}`, false)) {
                     tile.classList.add('active');
                 } else {
                     tile.classList.remove('active');
@@ -336,7 +556,7 @@ const System = {
         }
     },
 
-    setBrightness(val) {
+    setBrightness(val, silent = false) {
         let overlay = document.getElementById('brightness-overlay');
         if (!overlay) {
             overlay = document.createElement('div');
@@ -344,13 +564,17 @@ const System = {
             document.body.appendChild(overlay);
         }
         overlay.style.opacity = (100 - val) / 100;
-        localStorage.setItem('sys_brightness', val);
+        Kernel.Registry.set('HKCU\\Control Panel\\Desktop\\Brightness', val);
+        const slider = document.getElementById('brightness-slider');
+        if (slider) slider.value = val;
     },
 
-    setVolume(val) {
+    setVolume(val, silent = false) {
         this.volume = val;
-        localStorage.setItem('sys_volume', val);
-        this.notify(`Volume set to ${val}%`, 'info');
+        Kernel.Registry.set('HKCU\\Control Panel\\Desktop\\Volume', val);
+        const slider = document.getElementById('volume-slider');
+        if (slider) slider.value = val;
+        if (!silent) this.notify(`Volume set to ${val}%`, 'info');
     },
 
     toggleNightLight() {
@@ -362,7 +586,7 @@ const System = {
         }
         const isActive = overlay.style.display === 'block';
         overlay.style.display = isActive ? 'none' : 'block';
-        localStorage.setItem('cc_Night Light', !isActive);
+        Kernel.Registry.set('HKCU\\Control Panel\\ControlCenter\\Night Light', !isActive);
         this.notify(`Night Light ${!isActive ? 'Enabled' : 'Disabled'}`, 'info');
     },
 
@@ -477,21 +701,21 @@ const System = {
     },
 
     toggleWifi() {
-        const current = localStorage.getItem('cc_WiFi') === 'true';
-        localStorage.setItem('cc_WiFi', !current);
+        const current = Kernel.Registry.get('HKCU\\Control Panel\\ControlCenter\\WiFi', false);
+        Kernel.Registry.set('HKCU\\Control Panel\\ControlCenter\\WiFi', !current);
         this.notify(`WiFi ${!current ? 'Connected' : 'Disconnected'}`, 'info');
         this.updateNetworkStatus();
     },
 
     toggleBluetooth() {
-        const current = localStorage.getItem('cc_Bluetooth') === 'true';
-        localStorage.setItem('cc_Bluetooth', !current);
+        const current = Kernel.Registry.get('HKCU\\Control Panel\\ControlCenter\\Bluetooth', false);
+        Kernel.Registry.set('HKCU\\Control Panel\\ControlCenter\\Bluetooth', !current);
         this.notify(`Bluetooth ${!current ? 'Enabled' : 'Disabled'}`, 'info');
     },
 
     toggleAirplane() {
-        const current = localStorage.getItem('cc_Airplane') === 'true';
-        localStorage.setItem('cc_Airplane', !current);
+        const current = Kernel.Registry.get('HKCU\\Control Panel\\ControlCenter\\Airplane', false);
+        Kernel.Registry.set('HKCU\\Control Panel\\ControlCenter\\Airplane', !current);
         this.notify(`Airplane Mode ${!current ? 'Enabled' : 'Disabled'}`, 'info');
     },
 
@@ -641,30 +865,27 @@ class WindowManager {
     constructor() {
         this.container = document.getElementById('window-container');
         this.windows = [];
-        this.zIndexCounter = 200; // Start higher than desktop icons and window container base
+        this.zIndexCounter = 200;
+        this.currentDesktop = 1;
     }
 
     createWindow(title, content, width = 400, height = 300, appKey = null) {
-        // Generating a random ID so we can target specific windows later
-        const id = `win-${Math.random().toString(36).substring(2, 11)}`;
+        const proc = Kernel.ProcessManager.createProcess(title, appKey);
+        const id = `win-proc-${proc.pid}`;
         const win = document.createElement('div');
         win.className = 'window';
         win.id = id;
         win.setAttribute('data-app-key', appKey);
+        win.setAttribute('data-pid', proc.pid);
         
-        // Default size (can be customized later if needed)
         const winWidth = width;
         const winHeight = height;
-        
-        // Center the window on the screen
         const left = (window.innerWidth - winWidth) / 2;
         const top = (window.innerHeight - winHeight) / 2;
-        
-        // Offset new windows slightly so they don't stack perfectly if multiple are opened at once
-        const offset = this.windows.length * 20;
+        const offset = this.windows.filter(w => w.desktop === this.currentDesktop).length * 20;
         
         win.style.width = `${winWidth}px`;
-        win.style.height = `${winHeight}px`; // Added explicit height
+        win.style.height = `${winHeight}px`;
         win.style.top = `${top + offset}px`;
         win.style.left = `${left + offset}px`;
         win.style.zIndex = this.zIndexCounter++;
@@ -684,6 +905,7 @@ class WindowManager {
         win.querySelector('.close-btn').onclick = (e) => {
             e.stopPropagation();
             win.remove();
+            Kernel.ProcessManager.killProcess(proc.pid);
             this.windows = this.windows.filter(w => w.id !== id);
             this.updateTaskbar();
         };
@@ -696,28 +918,49 @@ class WindowManager {
 
         win.querySelector('.max-btn').onclick = (e) => {
             e.stopPropagation();
-            const isMax = win.classList.toggle('maximized');
-            win.querySelector('.max-btn').textContent = isMax ? '❐' : '[]';
-            win.querySelector('.max-btn').title = isMax ? 'Restore' : 'Maximize';
+            this.maximizeWindow(win);
         };
 
-        // Simple focus mechanism
         win.onmousedown = (e) => {
             if (!win.classList.contains('minimized')) {
                 win.style.zIndex = this.zIndexCounter++;
             }
         };
 
-        // Ensure clicking content also focuses
-        win.querySelector('.window-content').onmousedown = (e) => {
-            // e.stopPropagation(); // Allow it to bubble to win.onmousedown
-        };
-
         this.makeDraggable(win);
         this.container.appendChild(win);
-        this.windows.push({ id, title, element: win, appKey });
+        const winObj = { id, title, element: win, appKey, pid: proc.pid, desktop: this.currentDesktop };
+        this.windows.push(winObj);
         this.updateTaskbar();
         return win;
+    }
+
+    maximizeWindow(win) {
+        const isMax = win.classList.toggle('maximized');
+        const btn = win.querySelector('.max-btn');
+        btn.textContent = isMax ? '❐' : '[]';
+        btn.title = isMax ? 'Restore' : 'Maximize';
+        if (isMax) {
+            win.dataset.oldStyle = win.style.cssText;
+            win.style.top = '0';
+            win.style.left = '0';
+            win.style.width = '100%';
+            win.style.height = 'calc(100% - 40px)';
+        } else if (win.dataset.oldStyle) {
+            win.style.cssText = win.dataset.oldStyle;
+        }
+    }
+
+    switchDesktop(n) {
+        this.currentDesktop = n;
+        this.windows.forEach(w => {
+            if (w.desktop === n) {
+                w.element.style.display = 'flex';
+            } else {
+                w.element.style.display = 'none';
+            }
+        });
+        System.notify(`Switched to Desktop ${n}`, 'info');
     }
 
     updateTaskbar() {
@@ -884,7 +1127,7 @@ const Apps = {
         launch: () => {
             const id = `term-${Date.now()}`;
             wm.createWindow("Terminal", `
-                <div class="terminal-output" id="${id}-out" style="height:calc(100% - 30px); overflow-y:auto; font-family:'Courier New', monospace; padding:10px; font-size:0.9em">ApexOS Shell v1.4\nType 'help' for commands.</div>
+                <div class="terminal-output" id="${id}-out" style="height:calc(100% - 30px); overflow-y:auto; font-family:'Courier New', monospace; padding:10px; font-size:0.9em">ApexOS Shell v1.5\nType 'help' for commands.</div>
                 <div class="terminal-input-line" style="display:flex; align-items:center; padding:5px 10px; background:rgba(0,0,0,0.3)">
                     <span style="color:var(--accent-color); margin-right:5px">></span>
                     <input type="text" class="terminal-input" id="${id}-in" style="background:transparent; border:none; color:white; flex:1; outline:none; font-family:inherit" autofocus>
@@ -909,61 +1152,69 @@ const Apps = {
 
                     output.innerHTML += `<div><span style="color:var(--accent-color)">></span> ${cmdInput}</div>`;
                     
-                    const args = cmd.split(" ");
-                    const command = args[0];
+                    const parseArgs = (input) => {
+                        const args = [];
+                        let current = "";
+                        let inQuotes = false;
+                        for (let i = 0; i < input.length; i++) {
+                            const char = input[i];
+                            if (char === '"') { inQuotes = !inQuotes; }
+                            else if (char === ' ' && !inQuotes) {
+                                if (current) { args.push(current); current = ""; }
+                            } else { current += char; }
+                        }
+                        if (current) args.push(current);
+                        return args;
+                    };
+
+                    const args = parseArgs(cmdInput);
+                    const command = args[0] ? args[0].toLowerCase() : "";
 
                     if (command === "ls") {
-                        output.innerHTML += `<div>${Kernel.listDir()}</div>`;
+                        const path = args[1] || Kernel.currentDir;
+                        output.innerHTML += `<div>${Kernel.listDir(path)}</div>`;
+                    } else if (command === "cd") {
+                        const path = args[1] || "/home/user";
+                        const target = Kernel.Filesystem.resolvePath(path);
+                        if (Kernel.getDirObj(target)) {
+                            Kernel.currentDir = target;
+                        } else {
+                            output.innerHTML += `<div>Directory not found: ${path}</div>`;
+                        }
                     } else if (command === "pwd") {
                         output.innerHTML += `<div>${Kernel.currentDir}</div>`;
-                    } else if (command === "worker") {
-                        // Web Worker Demo
-                        const workerBlob = new Blob([`
-                            onmessage = function(e) {
-                                let result = 0;
-                                for (let i = 0; i < e.data; i++) result += i;
-                                postMessage(result);
-                            }
-                        `], { type: 'application/javascript' });
-                        const worker = new Worker(URL.createObjectURL(workerBlob));
-                        output.innerHTML += `<div>[WORKER] Starting heavy calculation...</div>`;
-                        worker.postMessage(100000000);
-                        worker.onmessage = (e) => {
-                            output.innerHTML += `<div>[WORKER] Result: ${e.data}</div>`;
-                            output.scrollTop = output.scrollHeight;
-                        };
                     } else if (command === "mkdir") {
-                        const name = args[1];
-                        if (name && Kernel.makeDir(name)) {
-                            output.innerHTML += `<div>Directory created: ${name}</div>`;
+                        const path = args[1];
+                        if (path && Kernel.makeDir(path)) {
+                            output.innerHTML += `<div>Directory created: ${path}</div>`;
                         } else {
-                            output.innerHTML += `<div>Usage: mkdir <dirname></div>`;
+                            output.innerHTML += `<div>Usage: mkdir <path> (or directory already exists)</div>`;
                         }
                     } else if (command === "touch") {
-                        const name = args[1];
-                        if (name) {
-                            Kernel.saveFile(name, "");
-                            output.innerHTML += `<div>File created: ${name}</div>`;
+                        const path = args[1];
+                        if (path) {
+                            Kernel.saveFile(path, "");
+                            output.innerHTML += `<div>File created: ${path}</div>`;
                         } else {
                             output.innerHTML += `<div>Usage: touch <filename></div>`;
                         }
                     } else if (command === "rm") {
-                        const name = args[1];
-                        if (name && Kernel.deleteFile(name)) {
-                            output.innerHTML += `<div>Deleted: ${name}</div>`;
+                        const path = args[1];
+                        if (path && Kernel.deleteFile(path)) {
+                            output.innerHTML += `<div>Deleted: ${path}</div>`;
                         } else {
                             output.innerHTML += `<div>File not found or usage: rm <filename></div>`;
                         }
                     } else if (command === "cat") {
-                        const file = args[1];
-                        if (!file) {
+                        const path = args[1];
+                        if (!path) {
                             output.innerHTML += `<div>Usage: cat <filename></div>`;
                         } else {
-                            const content = Kernel.getFile(file);
-                            output.innerHTML += content ? `<div style="white-space:pre-wrap; background:#111; padding:5px; border-left:2px solid var(--accent-color)">${content}</div>` : `<div>File not found: ${file}</div>`;
+                            const content = Kernel.getFile(path);
+                            output.innerHTML += content !== null ? `<div style="white-space:pre-wrap; background:#111; padding:5px; border-left:2px solid var(--accent-color)">${content}</div>` : `<div>File not found: ${path}</div>`;
                         }
                     } else if (command === "echo") {
-                        output.innerHTML += `<div>${cmdInput.substring(5)}</div>`;
+                        output.innerHTML += `<div>${args.slice(1).join(" ")}</div>`;
                     } else if (command === "ping") {
                         const host = args[1] || "apexos.dev";
                         output.innerHTML += `<div>PING ${host} (127.0.0.1): 56 data bytes</div>`;
@@ -1019,7 +1270,7 @@ const Apps = {
                                 <div>
                                     <b style="color:white">apex_user@ApexOS</b><br>
                                     -----------------<br>
-                                    OS: ApexOS v1.4.0<br>
+                                    OS: ApexOS v1.5.0<br>
                                     Kernel: 0.2.0-web<br>
                                     Uptime: ${Math.floor(performance.now()/60000)}m<br>
                                     Packages: 42 (npm)<br>
@@ -1329,8 +1580,11 @@ const Apps = {
             wm.createWindow("Settings", `
                 <div class="settings-container">
                     <div class="settings-sidebar">
-                        <div class="settings-nav-item active" id="${winId}-nav-general" data-tab="general">General</div>
+                        <div class="settings-nav-item" id="${winId}-nav-general" data-tab="general">General</div>
                         <div class="settings-nav-item" id="${winId}-nav-personal" data-tab="personal">Personalization</div>
+                        <div class="settings-nav-item" id="${winId}-nav-accessibility" data-tab="accessibility">Accessibility</div>
+                        <div class="settings-nav-item" id="${winId}-nav-accounts" data-tab="accounts">Accounts</div>
+                        <div class="settings-nav-item" id="${winId}-nav-privacy" data-tab="privacy">Privacy</div>
                         <div class="settings-nav-item" id="${winId}-nav-system" data-tab="system">System Info</div>
                         <div class="settings-nav-item" id="${winId}-nav-help" data-tab="help">Help Center</div>
                     </div>
@@ -1338,10 +1592,10 @@ const Apps = {
                         <!-- Content injected here -->
                     </div>
                 </div>
-            `, 600, 480, 'settings');
+            `, 650, 520, 'settings');
 
             const content = document.getElementById(`${winId}-content`);
-            const navItems = ['general', 'personal', 'system', 'help'];
+            const navItems = ['general', 'personal', 'accessibility', 'accounts', 'privacy', 'system', 'help'];
 
             const setActiveTab = (tab) => {
                 document.querySelectorAll(`#${winId} .settings-nav-item`).forEach(n => {
@@ -1350,26 +1604,60 @@ const Apps = {
                 });
                 if (tab === 'general') renderGeneral();
                 if (tab === 'personal') renderPersonal();
+                if (tab === 'accessibility') renderAccessibility();
+                if (tab === 'accounts') renderAccounts();
+                if (tab === 'privacy') renderPrivacy();
                 if (tab === 'system') renderSystem();
                 if (tab === 'help') renderHelp();
             };
 
             const renderGeneral = () => {
-                const currentTheme = localStorage.getItem('apex_theme') || 'default';
-                const currentAccent = localStorage.getItem('apex_accent') || '#3d5afe';
+                const username = Kernel.Registry.get('HKCU\\Software\\ApexOS\\User\\Name', 'Apex User');
                 content.innerHTML = `
                     <h2 style="margin-bottom:20px">General Settings</h2>
                     <div style="margin-bottom:20px">
                         <label style="display:block; margin-bottom:10px">System Profile</label>
                         <div style="display:flex; align-items:center; gap:15px; background:rgba(255,255,255,0.05); padding:15px; border-radius:12px">
-                            <div style="width:50px; height:50px; background:var(--accent-color); border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:1.5em; font-weight:bold">A</div>
+                            <div style="width:50px; height:50px; background:var(--accent-color); border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:1.5em; font-weight:bold">${username[0]}</div>
                             <div style="flex:1">
-                                <div style="color:white; font-size:1.2em; font-family:inherit; width:100%">Apex User</div>
+                                <div style="color:white; font-size:1.2em; font-family:inherit; width:100%">${username}</div>
                                 <div style="font-size:0.8em; opacity:0.5">Administrator</div>
                             </div>
                         </div>
                     </div>
+                    
+                    <div style="margin-top:20px; border-top:1px solid #333; padding-top:15px">
+                        <label style="display:block; margin-bottom:5px">Maintenance</label>
+                        <button id="${winId}-reset" style="padding:10px; background:#f44336; color:#fff; border:none; cursor:pointer; width:100%; border-radius:8px; font-weight:bold">Factory Reset (Wipe Data)</button>
+                    </div>
+                `;
 
+                document.getElementById(`${winId}-reset`).onclick = async () => {
+                    if(confirm("This will wipe all your files and settings. You sure?")) {
+                        await Storage.wipe();
+                        localStorage.clear();
+                        location.reload();
+                    }
+                };
+            };
+
+            const renderPersonal = () => {
+                const currentTheme = Kernel.Registry.get('HKLM\\Software\\System\\Theme', 'theme-sleek');
+                const currentAccent = Kernel.Registry.get('HKCU\\Control Panel\\Colors\\Accent', '#3d5afe');
+                const currentFont = Kernel.Registry.get('HKCU\\Control Panel\\Desktop\\Font', 'default');
+                const currentWallpaper = Kernel.Registry.get('HKCU\\Control Panel\\Desktop\\Wallpaper', 'assets/background.png');
+
+                const wallpapers = [
+                    { name: 'Default', url: 'assets/background.png' },
+                    { name: 'Abstract Blue', url: 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?q=80&w=2070&auto=format&fit=crop' },
+                    { name: 'Dark Minimal', url: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=2070&auto=format&fit=crop' },
+                    { name: 'Cyberpunk', url: 'https://images.unsplash.com/photo-1605810230434-7631ac76ec81?q=80&w=2070&auto=format&fit=crop' },
+                    { name: 'Nature', url: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=2070&auto=format&fit=crop' }
+                ];
+
+                content.innerHTML = `
+                    <h2 style="margin-bottom:20px">Personalization</h2>
+                    
                     <div style="margin-bottom:20px">
                         <label style="display:block; margin-bottom:5px">System Theme</label>
                         <select id="${winId}-theme" style="width:100%; padding:10px; background:#111; color:white; border:1px solid #333; border-radius:8px">
@@ -1387,72 +1675,64 @@ const Apps = {
                     </div>
 
                     <div style="margin-bottom:20px">
-                        <label style="display:block; margin-bottom:5px">Wallpaper URL (Sleek Theme)</label>
-                        <input type="text" id="${winId}-wp" placeholder="https://..." style="width:100%; padding:10px; background:#111; color:white; border:1px solid #333; border-radius:8px" value="${localStorage.getItem('apex_wallpaper') || ''}">
+                        <label style="display:block; margin-bottom:5px">System Font</label>
+                        <select id="${winId}-font" style="width:100%; padding:10px; background:#111; color:white; border:1px solid #333; border-radius:8px">
+                            <option value="default" ${currentFont === 'default' ? 'selected' : ''}>Default Theme Font</option>
+                            <option value="'Courier New', Courier, monospace" ${currentFont.includes('Courier') ? 'selected' : ''}>Monospace (Hacker)</option>
+                            <option value="'Inter', sans-serif" ${currentFont.includes('Inter') ? 'selected' : ''}>Inter (Modern)</option>
+                            <option value="'Segoe UI', Tahoma, sans-serif" ${currentFont.includes('Segoe') ? 'selected' : ''}>Segoe UI (Classic)</option>
+                            <option value="'Comic Sans MS', cursive" ${currentFont.includes('Comic') ? 'selected' : ''}>Comic Sans (Chaos)</option>
+                        </select>
                     </div>
 
-                    <div style="margin-top:20px; border-top:1px solid #333; padding-top:15px">
-                        <button id="${winId}-reset" style="padding:10px; background:#f44336; color:#fff; border:none; cursor:pointer; width:100%; border-radius:8px; font-weight:bold">Factory Reset (Wipe Data)</button>
-                    </div>
-                `;
-
-
-                document.getElementById(`${winId}-theme`).onchange = (e) => {
-                    const theme = e.target.value;
-                    document.body.className = theme === 'default' ? '' : theme;
-                    localStorage.setItem('apex_theme', theme);
-                    System.notify(`Theme applied: ${theme}`);
-                };
-
-                document.getElementById(`${winId}-accent`).oninput = (e) => {
-                    document.documentElement.style.setProperty('--accent-color', e.target.value);
-                    localStorage.setItem('apex_accent', e.target.value);
-                };
-
-                document.getElementById(`${winId}-wp`).onchange = (e) => {
-                    localStorage.setItem('apex_wallpaper', e.target.value);
-                    if (document.body.classList.contains('theme-sleek')) {
-                        document.body.style.backgroundImage = `url('${e.target.value}')`;
-                    }
-                };
-
-                document.getElementById(`${winId}-reset`).onclick = () => {
-                    if(confirm("This will wipe all your files and settings. You sure?")) {
-                        localStorage.clear();
-                        location.reload();
-                    }
-                };
-            };
-
-            const renderPersonal = () => {
-                const wallpapers = [
-                    { name: 'Default', url: 'assets/background.png' },
-                    { name: 'Abstract Blue', url: 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?q=80&w=2070&auto=format&fit=crop' },
-                    { name: 'Dark Minimal', url: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=2070&auto=format&fit=crop' },
-                    { name: 'Cyberpunk', url: 'https://images.unsplash.com/photo-1605810230434-7631ac76ec81?q=80&w=2070&auto=format&fit=crop' },
-                    { name: 'Nature', url: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=2070&auto=format&fit=crop' }
-                ];
-
-                content.innerHTML = `
-                    <h2 style="margin-bottom:20px">Personalization</h2>
                     <div style="margin-bottom:20px">
                         <label style="display:block; margin-bottom:10px">Wallpaper Gallery</label>
                         <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:10px">
                             ${wallpapers.map(wp => `
-                                <div class="wp-thumb" data-url="${wp.url}" style="aspect-ratio:16/9; background:url('${wp.url}') center/cover; border-radius:8px; cursor:pointer; border:2px solid transparent; transition:all 0.2s">
+                                <div class="wp-thumb ${currentWallpaper === wp.url ? 'active' : ''}" data-url="${wp.url}" style="aspect-ratio:16/9; background:url('${wp.url}') center/cover; border-radius:8px; cursor:pointer; border:2px solid ${currentWallpaper === wp.url ? 'var(--accent-color)' : 'transparent'}; transition:all 0.2s">
                                     <div style="background:rgba(0,0,0,0.5); color:white; font-size:0.7em; padding:2px 5px; border-bottom-right-radius:5px">${wp.name}</div>
                                 </div>
                             `).join('')}
                         </div>
                     </div>
+
                     <div style="margin-bottom:20px">
                         <label style="display:block; margin-bottom:5px">Custom Wallpaper URL</label>
                         <div style="display:flex; gap:10px">
-                            <input type="text" id="${winId}-wp-custom" placeholder="https://..." style="flex:1; padding:10px; background:#111; color:white; border:1px solid #333; border-radius:8px" value="${localStorage.getItem('apex_wallpaper') || ''}">
+                            <input type="text" id="${winId}-wp-custom" placeholder="https://..." style="flex:1; padding:10px; background:#111; color:white; border:1px solid #333; border-radius:8px" value="${currentWallpaper}">
                             <button id="${winId}-wp-apply" style="padding:10px 20px; background:var(--accent-color); color:black; border:none; border-radius:8px; cursor:pointer">Apply</button>
                         </div>
                     </div>
                 `;
+
+                document.getElementById(`${winId}-theme`).onchange = (e) => {
+                    const theme = e.target.value;
+                    const accessibilityClasses = ['accessibility-high-contrast', 'accessibility-large-text', 'accessibility-no-animations'].filter(c => document.body.classList.contains(c));
+                    document.body.className = theme === 'default' ? '' : theme;
+                    accessibilityClasses.forEach(c => document.body.classList.add(c));
+                    Kernel.Registry.set('HKLM\\Software\\System\\Theme', theme);
+                    
+                    // If we switched to sleek, re-apply wallpaper
+                    if (theme === 'theme-sleek') {
+                        const url = Kernel.Registry.get('HKCU\\Control Panel\\Desktop\\Wallpaper', 'assets/background.png');
+                        document.body.style.backgroundImage = `url('${url}')`;
+                    } else {
+                        document.body.style.backgroundImage = '';
+                    }
+
+                    System.notify(`Theme applied: ${theme}`);
+                };
+
+                document.getElementById(`${winId}-accent`).oninput = (e) => {
+                    document.documentElement.style.setProperty('--accent-color', e.target.value);
+                    Kernel.Registry.set('HKCU\\Control Panel\\Colors\\Accent', e.target.value);
+                };
+
+                document.getElementById(`${winId}-font`).onchange = (e) => {
+                    document.documentElement.style.setProperty('--font-main', e.target.value === 'default' ? '' : e.target.value);
+                    Kernel.Registry.set('HKCU\\Control Panel\\Desktop\\Font', e.target.value);
+                    System.notify(`Font updated`);
+                };
 
                 const thumbs = content.querySelectorAll('.wp-thumb');
                 thumbs.forEach(thumb => {
@@ -1460,7 +1740,7 @@ const Apps = {
                         thumbs.forEach(t => t.style.borderColor = 'transparent');
                         thumb.style.borderColor = 'var(--accent-color)';
                         const url = thumb.getAttribute('data-url');
-                        localStorage.setItem('apex_wallpaper', url);
+                        Kernel.Registry.set('HKCU\\Control Panel\\Desktop\\Wallpaper', url);
                         if (document.body.classList.contains('theme-sleek')) {
                             document.body.style.backgroundImage = `url('${url}')`;
                         }
@@ -1471,13 +1751,135 @@ const Apps = {
                 document.getElementById(`${winId}-wp-apply`).onclick = () => {
                     const url = document.getElementById(`${winId}-wp-custom`).value;
                     if (url) {
-                        localStorage.setItem('apex_wallpaper', url);
+                        Kernel.Registry.set('HKCU\\Control Panel\\Desktop\\Wallpaper', url);
                         if (document.body.classList.contains('theme-sleek')) {
                             document.body.style.backgroundImage = `url('${url}')`;
                         }
                         System.notify('Custom wallpaper applied!');
                     }
                 };
+            };
+
+            const renderAccessibility = () => {
+                const highContrast = Kernel.Registry.get('HKCU\\Control Panel\\Accessibility\\HighContrast', false);
+                const largeText = Kernel.Registry.get('HKCU\\Control Panel\\Accessibility\\LargeText', false);
+                const noAnimations = Kernel.Registry.get('HKCU\\Control Panel\\Accessibility\\NoAnimations', false);
+
+                content.innerHTML = `
+                    <h2 style="margin-bottom:20px">Accessibility</h2>
+                    <div style="display:flex; flex-direction:column; gap:15px">
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:15px; border-radius:10px">
+                            <div>
+                                <div style="font-weight:bold">High Contrast</div>
+                                <div style="font-size:0.8em; opacity:0.6">Easier to see text and icons</div>
+                            </div>
+                            <input type="checkbox" id="${winId}-hc" ${highContrast ? 'checked' : ''} style="width:20px; height:20px">
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:15px; border-radius:10px">
+                            <div>
+                                <div style="font-weight:bold">Large Text</div>
+                                <div style="font-size:0.8em; opacity:0.6">Increases system-wide font size</div>
+                            </div>
+                            <input type="checkbox" id="${winId}-lt" ${largeText ? 'checked' : ''} style="width:20px; height:20px">
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:15px; border-radius:10px">
+                            <div>
+                                <div style="font-weight:bold">Reduce Motion</div>
+                                <div style="font-size:0.8em; opacity:0.6">Disables window animations</div>
+                            </div>
+                            <input type="checkbox" id="${winId}-na" ${noAnimations ? 'checked' : ''} style="width:20px; height:20px">
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById(`${winId}-hc`).onchange = (e) => {
+                    Kernel.Registry.set('HKCU\\Control Panel\\Accessibility\\HighContrast', e.target.checked);
+                    document.body.classList.toggle('accessibility-high-contrast', e.target.checked);
+                };
+                document.getElementById(`${winId}-lt`).onchange = (e) => {
+                    Kernel.Registry.set('HKCU\\Control Panel\\Accessibility\\LargeText', e.target.checked);
+                    document.body.classList.toggle('accessibility-large-text', e.target.checked);
+                };
+                document.getElementById(`${winId}-na`).onchange = (e) => {
+                    Kernel.Registry.set('HKCU\\Control Panel\\Accessibility\\NoAnimations', e.target.checked);
+                    document.body.classList.toggle('accessibility-no-animations', e.target.checked);
+                };
+            };
+
+            const renderAccounts = () => {
+                const username = Kernel.Registry.get('HKCU\\Software\\ApexOS\\User\\Name', 'Apex User');
+                content.innerHTML = `
+                    <h2 style="margin-bottom:20px">User Accounts</h2>
+                    <div style="margin-bottom:20px; display:flex; align-items:center; gap:20px">
+                        <div style="width:80px; height:80px; background:var(--accent-color); border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:2.5em; font-weight:bold">${username[0]}</div>
+                        <div style="flex:1">
+                            <label style="display:block; margin-bottom:5px">Display Name</label>
+                            <input type="text" id="${winId}-username" value="${username}" style="width:100%; padding:10px; background:#111; color:white; border:1px solid #333; border-radius:8px">
+                        </div>
+                    </div>
+                    <div style="margin-bottom:20px">
+                        <label style="display:block; margin-bottom:5px">Account Type</label>
+                        <div style="padding:10px; background:rgba(255,255,255,0.05); border-radius:8px; opacity:0.7">System Administrator</div>
+                    </div>
+                    <div style="margin-bottom:20px">
+                        <label style="display:block; margin-bottom:5px">Change Password</label>
+                        <input type="password" id="${winId}-pass" placeholder="New Password" style="width:100%; padding:10px; background:#111; color:white; border:1px solid #333; border-radius:8px; margin-bottom:10px">
+                        <button id="${winId}-save-account" style="padding:10px 20px; background:var(--accent-color); color:black; border:none; border-radius:8px; cursor:pointer; width:100%">Save Changes</button>
+                    </div>
+                `;
+
+                document.getElementById(`${winId}-save-account`).onclick = () => {
+                    const newName = document.getElementById(`${winId}-username`).value;
+                    const newPass = document.getElementById(`${winId}-pass`).value;
+                    if (newName) {
+                        Kernel.Registry.set('HKCU\\Software\\ApexOS\\User\\Name', newName);
+                        const userSpan = document.querySelector('.user-info span');
+                        const userAvatar = document.querySelector('.user-avatar');
+                        if (userSpan) userSpan.textContent = newName;
+                        if (userAvatar) userAvatar.textContent = newName[0];
+                    }
+                    if (newPass) {
+                        Kernel.Registry.set('HKCU\\Software\\ApexOS\\User\\Password', newPass);
+                    }
+                    System.notify("Account updated successfully");
+                };
+            };
+
+            const renderPrivacy = () => {
+                const telemetry = Kernel.Registry.get('HKCU\\Software\\ApexOS\\Privacy\\Telemetry', true);
+                const location = Kernel.Registry.get('HKCU\\Software\\ApexOS\\Privacy\\Location', false);
+                const appPermissions = Kernel.Registry.get('HKCU\\Software\\ApexOS\\Privacy\\AppPermissions', true);
+
+                content.innerHTML = `
+                    <h2 style="margin-bottom:20px">Privacy & Security</h2>
+                    <div style="display:flex; flex-direction:column; gap:15px">
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:15px; border-radius:10px">
+                            <div>
+                                <div style="font-weight:bold">Send Diagnostic Data</div>
+                                <div style="font-size:0.8em; opacity:0.6">Help us improve ApexOS by sending anonymous usage data</div>
+                            </div>
+                            <input type="checkbox" id="${winId}-tele" ${telemetry ? 'checked' : ''} style="width:20px; height:20px">
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:15px; border-radius:10px">
+                            <div>
+                                <div style="font-weight:bold">Location Services</div>
+                                <div style="font-size:0.8em; opacity:0.6">Allow apps to access your location for weather and maps</div>
+                            </div>
+                            <input type="checkbox" id="${winId}-loc" ${location ? 'checked' : ''} style="width:20px; height:20px">
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:15px; border-radius:10px">
+                            <div>
+                                <div style="font-weight:bold">App Permissions</div>
+                                <div style="font-size:0.8em; opacity:0.6">Ask before allowing apps to access system resources</div>
+                            </div>
+                            <input type="checkbox" id="${winId}-perm" ${appPermissions ? 'checked' : ''} style="width:20px; height:20px">
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById(`${winId}-tele`).onchange = (e) => Kernel.Registry.set('HKCU\\Software\\ApexOS\\Privacy\\Telemetry', e.target.checked);
+                document.getElementById(`${winId}-loc`).onchange = (e) => Kernel.Registry.set('HKCU\\Software\\ApexOS\\Privacy\\Location', e.target.checked);
+                document.getElementById(`${winId}-perm`).onchange = (e) => Kernel.Registry.set('HKCU\\Software\\ApexOS\\Privacy\\AppPermissions', e.target.checked);
             };
 
             const renderSystem = () => {
@@ -1520,12 +1922,6 @@ const Apps = {
                                 Use File Explorer to manage your virtual files. You can now upload real files by dragging them into the window!
                             </div>
                         </div>
-                        <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:10px">
-                            <div style="font-weight:bold; margin-bottom:5px">☁️ Weather</div>
-                            <div style="font-size:0.9em; opacity:0.7">
-                                Connect your own OpenWeatherMap API key in the Weather app to get real-time updates.
-                            </div>
-                        </div>
                     </div>
                 `;
             };
@@ -1544,7 +1940,7 @@ const Apps = {
             const winId = `sysmon-${Math.random().toString(36).substring(2, 9)}`;
             wm.createWindow("System Monitor", `
                 <div style="padding:10px">
-                    <p>OS: ApexOS v1.3.0</p>
+                    <p>OS: ApexOS v1.5.0</p>
                     <p>Kernel: ApexKernel 0.2.0</p>
                     <p>VFS: Online (${Object.keys(VFS["/"]["home"]["user"]).length} files)</p>
                     <div style="margin-top:10px">
@@ -1580,7 +1976,7 @@ const Apps = {
         launch: () => {
             const win = wm.createWindow("About ApexOS", `
                 <div style="text-align:center; padding:10px;">
-                    <h2 style="color:var(--text-color)">🚀 ApexOS v1.3.0</h2>
+                    <h2 style="color:var(--text-color)">🚀 ApexOS v1.5.0</h2>
                     <p>Created by: <b>Naman Shettigar</b></p>
                     <p>Built by Naman Shettigar</p>
                     <p>A retro-modern WebOS experience.</p>
@@ -1602,22 +1998,116 @@ const Apps = {
         icon: "assets/settings.png",
         launch: () => {
             const winId = `taskmgr-${Date.now()}`;
-            const win = wm.createWindow("Task Manager", `<div id="${winId}-list" style="padding:10px"></div>`, 300, 400, 'taskmgr');
+            let currentTab = 'processes';
             
-            const updateList = () => {
-                const list = document.getElementById(`${winId}-list`);
-                if (!list) return;
-                list.innerHTML = wm.windows.map(w => `
-                    <div class="task-item">
-                        <span>${w.title}</span>
-                        <button onclick="document.getElementById('${w.id}').querySelector('.close-btn').click();" style="background:#f44336; color:#fff; border:none; padding:2px 5px; cursor:pointer">End Task</button>
-                    </div>
-                `).join('');
+            const win = wm.createWindow("Task Manager", `
+                <div class="taskmgr-tabs" style="display:flex; border-bottom:1px solid #333; background:#222">
+                    <div id="${winId}-tab-proc" class="taskmgr-tab active" style="padding:10px; cursor:pointer; flex:1; text-align:center">Processes</div>
+                    <div id="${winId}-tab-serv" class="taskmgr-tab" style="padding:10px; cursor:pointer; flex:1; text-align:center">Services</div>
+                </div>
+                <div id="${winId}-content" style="padding:10px; overflow-y:auto; height:calc(100% - 40px)"></div>
+            `, 450, 450, 'taskmgr');
+
+            if (!document.getElementById('taskmgr-styles')) {
+                const style = document.createElement('style');
+                style.id = 'taskmgr-styles';
+                style.innerHTML = `
+                    .taskmgr-tab.active { border-bottom: 2px solid var(--accent-color); color: var(--accent-color); background: #333; }
+                    .task-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+                    .task-table th { text-align: left; border-bottom: 1px solid #333; padding: 8px; background: #1a1a1a; position: sticky; top: 0; }
+                    .task-table td { padding: 8px; border-bottom: 1px solid #222; }
+                    .task-table tr:hover { background: rgba(255,255,255,0.05); }
+                `;
+                document.head.appendChild(style);
+            }
+
+            const render = () => {
+                const content = document.getElementById(`${winId}-content`);
+                if (!content) return;
+                
+                if (currentTab === 'processes') {
+                    const procs = Kernel.ProcessManager.getProcesses();
+                    content.innerHTML = `
+                        <table class="task-table">
+                            <thead>
+                                <tr>
+                                    <th>PID</th>
+                                    <th>App</th>
+                                    <th>CPU</th>
+                                    <th>RAM</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${procs.map(p => `
+                                    <tr>
+                                        <td>${p.pid}</td>
+                                        <td>${p.name}</td>
+                                        <td>${p.cpu}%</td>
+                                        <td>${p.memory}MB</td>
+                                        <td><button onclick="Kernel.ProcessManager.killProcess(${p.pid}); document.querySelector('[data-pid=\\'${p.pid}\\']')?.querySelector('.close-btn').click();" style="background:#f44336; color:#fff; border:none; padding:2px 5px; cursor:pointer; border-radius:3px">End</button></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                } else {
+                    const services = Kernel.Services.services;
+                    content.innerHTML = `
+                        <table class="task-table">
+                            <thead>
+                                <tr>
+                                    <th>Service</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${services.map(s => `
+                                    <tr>
+                                        <td>${s.name}</td>
+                                        <td style="color:${s.status === 'Running' ? '#4caf50' : '#f44336'}">${s.status}</td>
+                                        <td>
+                                            ${s.status === 'Running' ? 
+                                                `<button onclick="Kernel.Services.stop('${s.id}')" style="background:#f44336; color:#fff; border:none; padding:2px 5px; cursor:pointer; border-radius:3px">Stop</button>` :
+                                                `<button onclick="Kernel.Services.start('${s.id}')" style="background:#4caf50; color:#fff; border:none; padding:2px 5px; cursor:pointer; border-radius:3px">Start</button>`
+                                            }
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                }
             };
 
-            updateList();
-            const interval = setInterval(updateList, 2000);
-            win.onremove = () => clearInterval(interval);
+            const tabProc = document.getElementById(`${winId}-tab-proc`);
+            const tabServ = document.getElementById(`${winId}-tab-serv`);
+
+            tabProc.onclick = () => {
+                currentTab = 'processes';
+                tabProc.classList.add('active');
+                tabServ.classList.remove('active');
+                render();
+            };
+
+            tabServ.onclick = () => {
+                currentTab = 'services';
+                tabServ.classList.add('active');
+                tabProc.classList.remove('active');
+                render();
+            };
+
+            render();
+            const interval = setInterval(render, 2000);
+            
+            // Cleanup interval when window is closed
+            const checkExists = setInterval(() => {
+                if (!document.getElementById(`${winId}-content`)) {
+                    clearInterval(interval);
+                    clearInterval(checkExists);
+                }
+            }, 5000);
         }
     },
     quotes: {
@@ -1843,24 +2333,109 @@ const Apps = {
         icon: "assets/browser.png",
         launch: () => {
             const winId = `browser-${Date.now()}`;
+            let tabs = [{ title: "Wikipedia", url: "https://www.wikipedia.org" }];
+            let activeTabIdx = 0;
+            let bookmarks = JSON.parse(localStorage.getItem('browser_bookmarks') || '[]');
+            let history = JSON.parse(localStorage.getItem('browser_history') || '[]');
+            let downloads = JSON.parse(localStorage.getItem('browser_downloads') || '[]');
+
             wm.createWindow("ApexBrowser", `
                 <div style="height:100%; display:flex; flex-direction:column">
-                    <div style="display:flex; padding:8px; background:rgba(0,0,0,0.4); gap:8px; align-items:center; border-bottom:1px solid #333">
+                    <div id="${winId}-tabbar" style="display:flex; background:rgba(0,0,0,0.4); border-bottom:1px solid #333; padding:2px 5px 0 5px; gap:2px">
+                        <!-- Tabs here -->
+                        <button id="${winId}-add-tab" style="background:transparent; border:none; color:white; cursor:pointer; padding:5px 10px">+</button>
+                    </div>
+                    <div style="display:flex; padding:8px; background:rgba(0,0,0,0.2); gap:8px; align-items:center; border-bottom:1px solid #333">
                         <div style="display:flex; gap:5px">
                             <button id="${winId}-back" style="background:transparent; border:none; color:white; cursor:pointer; padding:2px">⬅️</button>
                             <button id="${winId}-forward" style="background:transparent; border:none; color:white; cursor:pointer; padding:2px">➡️</button>
                             <button id="${winId}-reload" style="background:transparent; border:none; color:white; cursor:pointer; padding:2px">🔄</button>
                         </div>
-                        <input type="text" id="${winId}-url" value="https://www.wikipedia.org" style="flex:1; background:rgba(0,0,0,0.3); border:1px solid #444; color:#fff; padding:4px 10px; border-radius:15px; font-size:0.9em; outline:none">
-                        <button id="${winId}-go" style="background:var(--accent-color); border:none; padding:4px 12px; cursor:pointer; border-radius:15px; font-weight:bold; color:black">Go</button>
+                        <input type="text" id="${winId}-url" value="" style="flex:1; background:rgba(0,0,0,0.3); border:1px solid #444; color:#fff; padding:4px 10px; border-radius:15px; font-size:0.9em; outline:none">
+                        <button id="${winId}-bookmark" style="background:transparent; border:none; cursor:pointer; font-size:1.2em">⭐</button>
+                        <button id="${winId}-menu" style="background:transparent; border:none; color:white; cursor:pointer; font-size:1.2em">⋮</button>
                     </div>
-                    <iframe id="${winId}-frame" src="https://www.wikipedia.org" style="flex:1; border:none; background:#fff"></iframe>
+                    <div id="${winId}-frames" style="flex:1; position:relative; background:#fff">
+                        <!-- Iframes here -->
+                    </div>
+                    <div id="${winId}-overlay-menu" style="display:none; position:absolute; top:80px; right:10px; background:#222; border:1px solid #444; border-radius:8px; z-index:1000; width:200px; box-shadow:0 10px 30px rgba(0,0,0,0.5)">
+                        <div class="browser-menu-item" id="${winId}-menu-bookmarks" style="padding:10px; cursor:pointer; border-bottom:1px solid #333">Bookmarks</div>
+                        <div class="browser-menu-item" id="${winId}-menu-history" style="padding:10px; cursor:pointer; border-bottom:1px solid #333">History</div>
+                        <div class="browser-menu-item" id="${winId}-menu-downloads" style="padding:10px; cursor:pointer">Downloads</div>
+                    </div>
                 </div>
-            `, 800, 600, 'browser');
+            `, 900, 700, 'browser');
+
+            const tabbar = document.getElementById(`${winId}-tabbar`);
+            const frameContainer = document.getElementById(`${winId}-frames`);
+            const urlInput = document.getElementById(`${winId}-url`);
+            const overlayMenu = document.getElementById(`${winId}-overlay-menu`);
+
+            const updateTabs = () => {
+                tabbar.querySelectorAll('.browser-tab').forEach(t => t.remove());
+                tabs.forEach((tab, idx) => {
+                    const tabElem = document.createElement('div');
+                    tabElem.className = `browser-tab ${idx === activeTabIdx ? 'active' : ''}`;
+                    tabElem.style.cssText = `
+                        padding:5px 15px; background:${idx === activeTabIdx ? 'rgba(255,255,255,0.1)' : 'transparent'}; 
+                        border-top-left-radius:8px; border-top-right-radius:8px; color:white; cursor:pointer; font-size:0.8em;
+                        display:flex; align-items:center; gap:8px; max-width:150px; border:1px solid ${idx === activeTabIdx ? '#333' : 'transparent'}; border-bottom:none;
+                    `;
+                    tabElem.innerHTML = `
+                        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${tab.title}</span>
+                        <span class="close-tab" style="font-size:0.8em; opacity:0.5">✕</span>
+                    `;
+                    tabElem.onclick = (e) => {
+                        if (e.target.classList.contains('close-tab')) {
+                            closeTab(idx);
+                        } else {
+                            activeTabIdx = idx;
+                            render();
+                        }
+                    };
+                    tabbar.insertBefore(tabElem, document.getElementById(`${winId}-add-tab`));
+                });
+            };
+
+            const render = () => {
+                updateTabs();
+                const activeTab = tabs[activeTabIdx];
+                urlInput.value = activeTab.url;
+
+                frameContainer.querySelectorAll('iframe').forEach(f => f.style.display = 'none');
+                let frame = document.getElementById(`${winId}-frame-${activeTabIdx}`);
+                if (!frame) {
+                    frame = document.createElement('iframe');
+                    frame.id = `${winId}-frame-${activeTabIdx}`;
+                    frame.src = activeTab.url;
+                    frame.style.cssText = "width:100%; height:100%; border:none; background:#fff; position:absolute; top:0; left:0";
+                    frameContainer.appendChild(frame);
+                }
+                frame.style.display = 'block';
+            };
+
+            const closeTab = (idx) => {
+                if (tabs.length === 1) return;
+                const frame = document.getElementById(`${winId}-frame-${idx}`);
+                if (frame) frame.remove();
+                tabs.splice(idx, 1);
+                if (activeTabIdx >= tabs.length) activeTabIdx = tabs.length - 1;
+                // Re-index remaining frames
+                frameContainer.querySelectorAll('iframe').forEach((f, i) => {
+                    f.id = `${winId}-frame-${i}`;
+                });
+                render();
+            };
+
+            document.getElementById(`${winId}-add-tab`).onclick = () => {
+                tabs.push({ title: "New Tab", url: "https://www.google.com" });
+                activeTabIdx = tabs.length - 1;
+                render();
+            };
 
             const go = () => {
-                let url = document.getElementById(`${winId}-url`).value;
-                if (!url || !url.trim()) return;
+                let url = urlInput.value.trim();
+                if (!url) return;
                 if (!url.startsWith('http')) {
                     if (url.includes('.') && !url.includes(' ')) {
                         url = 'https://' + url;
@@ -1868,16 +2443,104 @@ const Apps = {
                         url = 'https://www.google.com/search?q=' + encodeURIComponent(url);
                     }
                 }
-                document.getElementById(`${winId}-url`).value = url;
-                document.getElementById(`${winId}-frame`).src = url;
+                tabs[activeTabIdx].url = url;
+                tabs[activeTabIdx].title = url.split('/')[2] || url;
+                const frame = document.getElementById(`${winId}-frame-${activeTabIdx}`);
+                if (frame) frame.src = url;
+                
+                // Add to history
+                history.unshift({ title: tabs[activeTabIdx].title, url: url, time: new Date().toLocaleString() });
+                if (history.length > 100) history.pop();
+                localStorage.setItem('browser_history', JSON.stringify(history));
+                
+                render();
             };
 
-            document.getElementById(`${winId}-go`).onclick = go;
-            document.getElementById(`${winId}-url`).onkeydown = (e) => { if(e.key === 'Enter') go(); };
-            document.getElementById(`${winId}-reload`).onclick = () => {
-                const frame = document.getElementById(`${winId}-frame`);
-                frame.src = frame.src;
+            urlInput.onkeydown = (e) => { if (e.key === 'Enter') go(); };
+            document.getElementById(`${winId}-back`).onclick = () => {
+                const frame = document.getElementById(`${winId}-frame-${activeTabIdx}`);
+                if (frame) frame.contentWindow.history.back();
             };
+            document.getElementById(`${winId}-forward`).onclick = () => {
+                const frame = document.getElementById(`${winId}-frame-${activeTabIdx}`);
+                if (frame) frame.contentWindow.history.forward();
+            };
+            document.getElementById(`${winId}-reload`).onclick = () => {
+                const frame = document.getElementById(`${winId}-frame-${activeTabIdx}`);
+                if (frame) frame.src = frame.src;
+            };
+
+            document.getElementById(`${winId}-bookmark`).onclick = () => {
+                const activeTab = tabs[activeTabIdx];
+                if (!bookmarks.find(b => b.url === activeTab.url)) {
+                    bookmarks.push({ title: activeTab.title, url: activeTab.url });
+                    localStorage.setItem('browser_bookmarks', JSON.stringify(bookmarks));
+                    System.notify("Bookmark added!");
+                }
+            };
+
+            document.getElementById(`${winId}-menu`).onclick = () => {
+                overlayMenu.style.display = overlayMenu.style.display === 'none' ? 'block' : 'none';
+            };
+
+            const showListOverlay = (title, items, type) => {
+                const content = `
+                    <div style="padding:15px; color:white">
+                        <h3>${title}</h3>
+                        <div style="max-height:300px; overflow-y:auto; margin-top:10px">
+                            ${items.length === 0 ? '<div style="opacity:0.5">No items found</div>' : items.map((item, i) => `
+                                <div style="padding:8px; border-bottom:1px solid #333; display:flex; justify-content:space-between; align-items:center">
+                                    <div style="flex:1; cursor:pointer" onclick="window._browser_open('${winId}', '${item.url}')">
+                                        <div style="font-size:0.9em">${item.title}</div>
+                                        <div style="font-size:0.7em; opacity:0.5">${item.url}</div>
+                                    </div>
+                                    <button style="background:transparent; border:none; color:#f44336; cursor:pointer" onclick="window._browser_remove('${winId}', '${type}', ${i})">✕</button>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+                const listWin = wm.createWindow(title, content, 400, 400, 'browser');
+            };
+
+            window._browser_open = (bid, url) => {
+                // Find the window and update its URL
+                urlInput.value = url;
+                go();
+            };
+
+            window._browser_remove = (bid, type, idx) => {
+                if (type === 'bookmarks') {
+                    bookmarks.splice(idx, 1);
+                    localStorage.setItem('browser_bookmarks', JSON.stringify(bookmarks));
+                } else if (type === 'history') {
+                    history.splice(idx, 1);
+                    localStorage.setItem('browser_history', JSON.stringify(history));
+                } else if (type === 'downloads') {
+                    downloads.splice(idx, 1);
+                    localStorage.setItem('browser_downloads', JSON.stringify(downloads));
+                }
+                System.notify("Item removed");
+                // Ideally refresh the overlay win, but for now just close it or notify
+            };
+
+            document.getElementById(`${winId}-menu-bookmarks`).onclick = () => {
+                overlayMenu.style.display = 'none';
+                showListOverlay("Bookmarks", bookmarks, 'bookmarks');
+            };
+            document.getElementById(`${winId}-menu-history`).onclick = () => {
+                overlayMenu.style.display = 'none';
+                showListOverlay("History", history, 'history');
+            };
+            document.getElementById(`${winId}-menu-downloads`).onclick = () => {
+                overlayMenu.style.display = 'none';
+                showListOverlay("Downloads", downloads, 'downloads');
+            };
+
+            // Hook into download attempts (though iframe sandbox might prevent this)
+            // For this WebOS, we can simulate downloads when Kernel.downloadFile is called from somewhere.
+            
+            render();
         }
     },
     clock: {
@@ -2049,89 +2712,210 @@ const Apps = {
         title: "ApexPad",
         icon: "assets/apexpad.png",
         launch: (initialFile = null) => {
-            const fileName = initialFile || "untitled.txt";
-            const content = initialFile ? Kernel.getFile(fileName) : "";
-            
-            const winId = `editor-${Math.random().toString(36).substring(2, 9)}`;
-            const win = wm.createWindow("ApexPad", `
+            const winId = `editor-${Date.now()}`;
+            let tabs = [];
+            let activeTabIdx = 0;
+
+            const addTab = (fileName = "untitled.txt", content = "") => {
+                tabs.push({ fileName, content, modified: false });
+                activeTabIdx = tabs.length - 1;
+            };
+
+            if (initialFile) {
+                const content = Kernel.getFile(initialFile) || "";
+                addTab(initialFile, content);
+            } else {
+                addTab();
+            }
+
+            wm.createWindow("ApexPad", `
                 <div style="height:100%; display:flex; flex-direction:column">
-                    <div style="display:flex; justify-content:space-between; align-items:center; padding:5px; background:rgba(255,255,255,0.05)">
-                        <div style="font-size:0.8em">File: <input type="text" id="${winId}-filename" value="${fileName}" style="background:transparent; border:none; color:var(--accent-color); font-family:inherit; width:150px"></div>
-                        <div style="display:flex; gap:10px">
-                            <button id="${winId}-toggle-preview" style="font-size:0.7em; cursor:pointer; background:transparent; border:1px solid #444; color:white; padding:2px 5px">Preview</button>
-                            <select id="${winId}-fs" style="background:#222; color:white; border:1px solid #444; font-size:0.7em">
-                                <option value="12px">Small</option>
-                                <option value="16px" selected>Normal</option>
-                                <option value="20px">Large</option>
+                    <div id="${winId}-tabbar" style="display:flex; background:rgba(255,255,255,0.05); border-bottom:1px solid #333; padding:2px 5px 0 5px; gap:2px">
+                        <button id="${winId}-add-tab" style="background:transparent; border:none; color:white; cursor:pointer; padding:5px 10px">+</button>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px; background:rgba(0,0,0,0.2); border-bottom:1px solid #333">
+                        <div style="display:flex; gap:10px; align-items:center">
+                            <input type="text" id="${winId}-filename" style="background:transparent; border:none; color:var(--accent-color); font-family:inherit; width:150px; font-size:0.8em" placeholder="filename.txt">
+                            <select id="${winId}-lang" style="background:#222; color:white; border:1px solid #444; font-size:0.7em">
+                                <option value="txt">Text</option>
+                                <option value="js">JavaScript</option>
+                                <option value="html">HTML</option>
+                                <option value="css">CSS</option>
+                                <option value="md">Markdown</option>
                             </select>
-                            <button id="${winId}-save" style="font-size:0.7em; background:var(--accent-color); color:#000; border:none; cursor:pointer; font-weight:bold; padding:2px 10px">Save</button>
+                        </div>
+                        <div style="display:flex; gap:10px">
+                            <button id="${winId}-save" style="font-size:0.7em; background:var(--accent-color); color:#000; border:none; cursor:pointer; font-weight:bold; padding:4px 12px; border-radius:4px">Save</button>
                         </div>
                     </div>
-                    <div id="${winId}-editor-container" style="flex:1; display:flex; overflow:hidden">
-                        <textarea id="${winId}-text" style="flex:1; background:#000; color:var(--text-color); border:none; border-right:1px solid #333; font-family:'Courier New', monospace; padding:10px; resize:none; font-size:16px; outline:none">${content}</textarea>
-                        <div id="${winId}-preview" style="flex:1; display:none; background:#111; padding:10px; overflow-y:auto; font-family:sans-serif; color:#ddd"></div>
+                    <div id="${winId}-editor-container" style="flex:1; position:relative; overflow:hidden; background:#000">
+                        <textarea id="${winId}-text" style="width:100%; height:100%; background:transparent; color:transparent; border:none; font-family:'Courier New', monospace; padding:10px; resize:none; font-size:14px; outline:none; position:absolute; top:0; left:0; z-index:2; caret-color:white" spellcheck="false"></textarea>
+                        <pre id="${winId}-highlight" style="width:100%; height:100%; margin:0; padding:10px; font-family:'Courier New', monospace; font-size:14px; position:absolute; top:0; left:0; z-index:1; pointer-events:none; white-space:pre-wrap; word-wrap:break-word; color:#ddd; overflow:hidden"></pre>
                     </div>
-                    <div id="${winId}-stats" style="font-size:0.7em; opacity:0.7; padding:2px 10px; background:rgba(0,0,0,0.2)">Words: 0 | Chars: 0</div>
+                    <div id="${winId}-stats" style="font-size:0.7em; opacity:0.7; padding:2px 10px; background:rgba(0,0,0,0.2)">Line: 1, Col: 1 | Words: 0</div>
                 </div>
-            `, 700, 500, 'editor');
+            `, 800, 600, 'editor');
 
-            const textarea = win.querySelector(`#${winId}-text`);
-            const preview = win.querySelector(`#${winId}-preview`);
-            const stats = win.querySelector(`#${winId}-stats`);
-            const togglePreview = win.querySelector(`#${winId}-toggle-preview`);
+            const tabbar = document.getElementById(`${winId}-tabbar`);
+            const textarea = document.getElementById(`${winId}-text`);
+            const highlight = document.getElementById(`${winId}-highlight`);
+            const filenameInput = document.getElementById(`${winId}-filename`);
+            const langSelect = document.getElementById(`${winId}-lang`);
+            const stats = document.getElementById(`${winId}-stats`);
 
-            let previewActive = false;
+            const syntaxHighlight = (code, lang) => {
+                const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                code = esc(code);
+                if (lang === 'js') {
+                    return code
+                        .replace(/\b(const|let|var|function|return|if|else|for|while|import|export|from|class|extends|new|this|async|await)\b/g, '<span style="color:#ff79c6">$1</span>')
+                        .replace(/\b(true|false|null|undefined)\b/g, '<span style="color:#bd93f9">$1</span>')
+                        .replace(/(".*?"|'.*?'|`.*?`)/g, '<span style="color:#f1fa8c">$1</span>')
+                        .replace(/\b(\d+)\b/g, '<span style="color:#bd93f9">$1</span>')
+                        .replace(/\/\/.*/g, '<span style="color:#6272a4">$&</span>');
+                } else if (lang === 'html') {
+                    return code
+                        .replace(/(&lt;!--.*?--&gt;)/gs, '<span style="color:#6272a4">$1</span>')
+                        .replace(/(&lt;\/?[a-z0-9]+)(&gt;| )/gi, '<span style="color:#ff79c6">$1</span>$2')
+                        .replace(/([a-z-]+)=(&quot;.*?&quot;)/gi, '<span style="color:#50fa7b">$1</span>=<span style="color:#f1fa8c">$2</span>');
+                } else if (lang === 'css') {
+                    return code
+                        .replace(/(\/\*.*?\*\/)/gs, '<span style="color:#6272a4">$1</span>')
+                        .replace(/([a-z-]+)\s*:/gi, '<span style="color:#8be9fd">$1</span>:')
+                        .replace(/(:)(.*?;)/gi, '$1<span style="color:#f1fa8c">$2</span>')
+                        .replace(/([.#][a-z0-9_-]+)/gi, '<span style="color:#50fa7b">$1</span>');
+                }
+                return code;
+            };
+
+            const updateTabs = () => {
+                tabbar.querySelectorAll('.editor-tab').forEach(t => t.remove());
+                tabs.forEach((tab, idx) => {
+                    const tabElem = document.createElement('div');
+                    tabElem.className = `editor-tab ${idx === activeTabIdx ? 'active' : ''}`;
+                    tabElem.style.cssText = `
+                        padding:5px 15px; background:${idx === activeTabIdx ? 'rgba(255,255,255,0.1)' : 'transparent'}; 
+                        border-top-left-radius:8px; border-top-right-radius:8px; color:white; cursor:pointer; font-size:0.8em;
+                        display:flex; align-items:center; gap:8px; border:1px solid ${idx === activeTabIdx ? '#333' : 'transparent'}; border-bottom:none;
+                    `;
+                    tabElem.innerHTML = `
+                        <span>${tab.fileName}${tab.modified ? '*' : ''}</span>
+                        <span class="close-tab" style="font-size:0.8em; opacity:0.5">✕</span>
+                    `;
+                    tabElem.onclick = (e) => {
+                        if (e.target.classList.contains('close-tab')) {
+                            closeTab(idx);
+                        } else {
+                            saveCurrentTabState();
+                            activeTabIdx = idx;
+                            loadActiveTab();
+                        }
+                    };
+                    tabbar.insertBefore(tabElem, document.getElementById(`${winId}-add-tab`));
+                });
+            };
+
+            const saveCurrentTabState = () => {
+                if (tabs[activeTabIdx]) {
+                    tabs[activeTabIdx].content = textarea.value;
+                    tabs[activeTabIdx].fileName = filenameInput.value;
+                }
+            };
+
+            const loadActiveTab = () => {
+                const tab = tabs[activeTabIdx];
+                textarea.value = tab.content;
+                filenameInput.value = tab.fileName;
+                
+                const ext = tab.fileName.split('.').pop();
+                if (['js', 'html', 'css', 'md'].includes(ext)) {
+                    langSelect.value = ext === 'md' ? 'md' : ext;
+                } else {
+                    langSelect.value = 'txt';
+                }
+                
+                updateHighlight();
+                updateStats();
+                updateTabs();
+            };
+
+            const updateHighlight = () => {
+                highlight.innerHTML = syntaxHighlight(textarea.value, langSelect.value) + "\n";
+                highlight.scrollTop = textarea.scrollTop;
+                highlight.scrollLeft = textarea.scrollLeft;
+            };
 
             const updateStats = () => {
-                const text = textarea.value.trim();
-                const words = text ? text.split(/\s+/).length : 0;
-                const chars = text.length;
-                stats.textContent = `Words: ${words} | Chars: ${chars}`;
-                if (previewActive) renderPreview();
-            };
-
-            const renderPreview = () => {
                 const text = textarea.value;
-                // Simple Markdown-ish parser
-                let html = text
-                    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-                    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-                    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-                    .replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>')
-                    .replace(/\*\*(.*)\*\*/gim, '<b>$1</b>')
-                    .replace(/\*(.*)\*/gim, '<i>$1</i>')
-                    .replace(/!\[(.*?)\]\((.*?)\)/gim, "<img alt='$1' src='$2' />")
-                    .replace(/\[(.*?)\]\((.*?)\)/gim, "<a href='$2'>$1</a>")
-                    .replace(/\n$/gim, '<br />');
-                
-                // Simple Syntax Highlighting for code blocks
-                html = html.replace(/```([\s\S]*?)```/g, (match, code) => {
-                    return `<pre style="background:#222; padding:10px; border-radius:5px; color:#aaffaa">${code.trim()}</pre>`;
-                });
-
-                preview.innerHTML = html;
+                const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+                const lines = text.split('\n');
+                const line = textarea.value.substr(0, textarea.selectionStart).split('\n').length;
+                const col = textarea.selectionStart - lines.slice(0, line - 1).join('\n').length - (line > 1 ? 1 : 0) + 1;
+                stats.textContent = `Line: ${line}, Col: ${col} | Words: ${words}`;
             };
 
-            togglePreview.onclick = () => {
-                previewActive = !previewActive;
-                preview.style.display = previewActive ? 'block' : 'none';
-                togglePreview.style.background = previewActive ? 'var(--accent-color)' : 'transparent';
-                togglePreview.style.color = previewActive ? '#000' : 'white';
-                if (previewActive) renderPreview();
+            const closeTab = (idx) => {
+                if (tabs.length === 1) return;
+                tabs.splice(idx, 1);
+                if (activeTabIdx >= tabs.length) activeTabIdx = tabs.length - 1;
+                loadActiveTab();
             };
 
-            textarea.oninput = updateStats;
-            updateStats();
-
-            win.querySelector(`#${winId}-fs`).onchange = (e) => {
-                textarea.style.fontSize = e.target.value;
+            textarea.oninput = () => {
+                tabs[activeTabIdx].modified = true;
+                updateHighlight();
+                updateStats();
+                updateTabs();
             };
 
-            win.querySelector(`#${winId}-save`).onclick = () => {
-                const name = win.querySelector(`#${winId}-filename`).value;
-                const text = textarea.value;
-                Kernel.saveFile(name, text);
+            textarea.onscroll = () => {
+                highlight.scrollTop = textarea.scrollTop;
+                highlight.scrollLeft = textarea.scrollLeft;
             };
+
+            textarea.onkeydown = (e) => {
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    textarea.value = textarea.value.substring(0, start) + "    " + textarea.value.substring(end);
+                    textarea.selectionStart = textarea.selectionEnd = start + 4;
+                    updateHighlight();
+                }
+                setTimeout(updateStats, 10);
+            };
+
+            textarea.onclick = updateStats;
+
+            filenameInput.onchange = () => {
+                tabs[activeTabIdx].fileName = filenameInput.value;
+                updateTabs();
+            };
+
+            langSelect.onchange = updateHighlight;
+
+            document.getElementById(`${winId}-add-tab`).onclick = () => {
+                saveCurrentTabState();
+                addTab();
+                loadActiveTab();
+            };
+
+            document.getElementById(`${winId}-save`).onclick = async () => {
+                const tab = tabs[activeTabIdx];
+                const name = filenameInput.value;
+                const content = textarea.value;
+                const success = await Kernel.saveFile(name, content);
+                if (success) {
+                    tab.fileName = name;
+                    tab.content = content;
+                    tab.modified = false;
+                    updateTabs();
+                } else {
+                    System.notify("Failed to save file", "error");
+                }
+            };
+
+            loadActiveTab();
         }
     },
     stopwatch: {
@@ -2572,9 +3356,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(refreshDesktopIcons, 100);
     setTimeout(refreshDesktopIcons, 500);
     window.addEventListener('resize', () => {
-        // Only refresh icons if they aren't manually positioned? 
-        // Actually, overlapping often happens when resizing or if the grid logic is flaky.
-        // Let's re-run the layout for non-saved icons.
         refreshDesktopIcons();
     });
 
@@ -2583,7 +3364,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const welcomeWin = wm.createWindow('Welcome', `
             <div style="text-align:center; padding:10px;">
-                <h2 style="color:var(--text-color)">🚀 ApexOS v1.4.1</h2>
+                <h2 style="color:var(--text-color)">🚀 ApexOS v1.5.0</h2>
                 <p>System Initialized Successfully.</p>
                 <hr style="border:0; border-top:1px solid #333; margin:15px 0;">
                 <p>Welcome to your retro-modern workspace.</p>

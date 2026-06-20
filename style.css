@@ -58,6 +58,31 @@ body.theme-classic {
     --font-main: 'MS Sans Serif', Arial, sans-serif;
 }
 
+/* --- ACCESSIBILITY STYLES --- */
+
+body.accessibility-high-contrast {
+    --bg-color: #000000 !important;
+    --text-color: #ffff00 !important;
+    --accent-color: #ffffff !important;
+    --window-bg: #000000 !important;
+    --taskbar-bg: #000000 !important;
+    border: 2px solid #ffff00;
+}
+
+body.accessibility-high-contrast * {
+    border-color: #ffff00 !important;
+    box-shadow: none !important;
+}
+
+body.accessibility-large-text {
+    font-size: 1.25em !important;
+}
+
+body.accessibility-no-animations * {
+    transition: none !important;
+    animation: none !important;
+}
+
 /* --- NEW CORE UI --- */
 
 #lock-screen {
