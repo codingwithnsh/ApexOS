@@ -2124,7 +2124,7 @@ const Apps = {
     },
     taskmgr: {
         title: "Task Manager",
-        icon: "assets/terminal.png",
+        icon: "assets/task-manager.png",
         launch: (defaultTab = 'processes') => {
             const winId = `taskmgr-${Date.now()}`;
             let currentTab = defaultTab;
