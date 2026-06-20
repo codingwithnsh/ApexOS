@@ -6,6 +6,18 @@
  * close second.
  */
 
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    scroll-behavior: smooth;
+    font-family: var(--font-main);
+    background-color: var(--bg-color);
+    color: var(--text-color);
+}
+
 :root {
     --bg-color: #0c0c0c;
     --text-color: #00ff41;
@@ -15,9 +27,6 @@
     --font-main: 'Courier New', Courier, monospace;
 }
 
-/* --- THEME DEFINITIONS --- */
-
-/* The OG "Hacker" look */
 body.theme-cyberpunk {
     --bg-color: #2b0031;
     --text-color: #ff00ff;
@@ -26,7 +35,6 @@ body.theme-cyberpunk {
     --taskbar-bg: #3d0046;
 }
 
-/* My personal favorite - Glassmorphism vibes */
 body.theme-sleek {
     --bg-color: #121212;
     --text-color: #ffffff;
@@ -38,7 +46,6 @@ body.theme-sleek {
     background-size: cover;
 }
 
-/* For when it's too bright outside */
 body.theme-light {
     --bg-color: #f0f0f0;
     --text-color: #333;
@@ -48,7 +55,6 @@ body.theme-light {
     --font-main: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-/* Nostalgia is a hell of a drug */
 body.theme-classic {
     --bg-color: #c0c0c0;
     --text-color: #000;
@@ -58,7 +64,6 @@ body.theme-classic {
     --font-main: 'MS Sans Serif', Arial, sans-serif;
 }
 
-/* --- ACCESSIBILITY STYLES --- */
 
 body.accessibility-high-contrast {
     --bg-color: #000000 !important;
@@ -82,8 +87,6 @@ body.accessibility-no-animations * {
     transition: none !important;
     animation: none !important;
 }
-
-/* --- NEW CORE UI --- */
 
 #lock-screen {
     position: fixed;
@@ -365,19 +368,18 @@ body.theme-sleek .desktop-icon:hover {
 
 body.theme-sleek .icon-graphic {
     background: rgba(255, 255, 255, 0.05);
-    border-radius: 10px;
-    padding: 8px;
+    border-radius: 12px;
+    padding: 10px;
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.05);
     margin-bottom: 5px;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 64px;
-    height: 64px;
+    width: 80px;
+    height: 80px;
 }
 
-/* Snake Game */
 .snake-canvas {
     background: #000;
     display: block;
@@ -385,7 +387,6 @@ body.theme-sleek .icon-graphic {
     border: 2px solid var(--accent-color);
 }
 
-/* Paint App */
 .paint-canvas {
     background: #fff;
     cursor: crosshair;
@@ -402,7 +403,6 @@ body.theme-sleek .icon-graphic {
     border-radius: 5px;
 }
 
-/* Task Manager */
 .task-item {
     display: flex;
     justify-content: space-between;
@@ -411,7 +411,6 @@ body.theme-sleek .icon-graphic {
     align-items: center;
 }
 
-/* Battery/Status in Taskbar */
 .taskbar-status {
     margin-left: 15px;
     font-size: 0.8em;
@@ -420,7 +419,6 @@ body.theme-sleek .icon-graphic {
     gap: 10px;
 }
 
-/* Matrix Effect Overlay */
 .matrix-overlay {
     position: fixed;
     top: 0;
@@ -446,12 +444,11 @@ body {
     height: 100vh;
 }
 
-/* Boot sequence styling */
 #boot-screen {
     padding: 20px;
     height: 100%;
     display: flex;
-    flex-direction: column-reverse; /* Newest logs at bottom */
+    flex-direction: column-reverse;
 }
 
 #boot-log {
@@ -470,7 +467,7 @@ body {
     50% { opacity: 0; }
 }
 
-/* Desktop layout */
+
 #desktop {
     height: 100vh;
     display: flex;
@@ -558,7 +555,6 @@ body {
     pointer-events: none;
 }
 
-/* Start Menu */
 #start-menu {
     position: fixed;
     bottom: 50px;
@@ -641,9 +637,16 @@ body {
 }
 
 .start-menu-item {
-    padding: 10px;
+    padding: 10px 15px;
     cursor: pointer;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    color: white;
+    font-size: 0.95em;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: background 0.2s;
+    word-wrap: break-word;
 }
 
 .start-menu-item:hover {
@@ -651,7 +654,6 @@ body {
     color: #000;
 }
 
-/* Desktop Icons */
 #desktop-icons {
     position: absolute;
     top: 0;
@@ -664,10 +666,10 @@ body {
 
 .desktop-icon {
     width: 100px;
-    height: 110px;
+    height: 120px;
     text-align: center;
     cursor: pointer;
-    padding: 10px;
+    padding: 5px;
     pointer-events: auto;
     user-select: none;
     position: absolute;
@@ -675,7 +677,8 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
+    padding-top: 10px;
     animation: iconFadeIn 0.5s ease-out forwards;
     opacity: 0;
 }
@@ -690,23 +693,38 @@ body {
 }
 
 .icon-graphic img {
-    width: 48px;
-    height: 48px;
+    width: 54px;
+    height: 54px;
     object-fit: contain;
 }
 
 .icon-label {
-    font-size: 0.8em;
+    font-size: 0.85em;
+    color: white;
+    margin-top: 8px;
+    width: 100%;
+    word-wrap: break-word;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+    padding: 0 2px;
+    line-height: 1.2;
 }
 
-/* Window styles */
 .window {
     position: absolute;
     min-width: 300px;
     background: var(--window-bg);
-    border: 1px solid var(--accent-color);
-    box-shadow: 5px 5px 0px rgba(0,0,0,0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
     pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.window.active-window {
+    border-color: var(--accent-color);
+    box-shadow: 0 15px 40px rgba(0,0,0,0.7);
 }
 
 .window-header {
@@ -752,9 +770,53 @@ body {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
+    position: relative;
 }
 
-/* Notifications */
+/* GPU Acceleration */
+body.gpu-acceleration {
+    will-change: transform;
+}
+
+body.gpu-acceleration .window,
+body.gpu-acceleration .desktop-icon,
+body.gpu-acceleration .taskbar-item,
+body.gpu-acceleration #start-menu {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+}
+
+.resizer {
+    position: absolute;
+    background: transparent;
+}
+
+.resizer-r {
+    right: -2px;
+    top: 0;
+    width: 5px;
+    height: 100%;
+    cursor: e-resize;
+}
+
+.resizer-b {
+    bottom: -2px;
+    left: 0;
+    width: 100%;
+    height: 5px;
+    cursor: s-resize;
+}
+
+.resizer-rb {
+    right: -4px;
+    bottom: -4px;
+    width: 10px;
+    height: 10px;
+    cursor: se-resize;
+    z-index: 10;
+}
+
 
 .notification {
     background: rgba(0, 0, 0, 0.85);
@@ -801,7 +863,6 @@ body {
     to { width: 0; }
 }
 
-/* Run Dialog */
 #run-dialog {
     position: fixed;
     top: 0;
@@ -838,7 +899,6 @@ body {
     flex: 1;
 }
 
-/* Sleek Scrollbar */
 .window-content::-webkit-scrollbar {
     width: 8px;
 }
@@ -862,7 +922,6 @@ body {
     display: none !important;
 }
 
-/* Context Menu */
 #context-menu {
     position: absolute;
     background: var(--taskbar-bg);
@@ -883,7 +942,6 @@ body {
     color: #000;
 }
 
-/* Terminal styles */
 .terminal-output {
     height: 250px;
     overflow-y: auto;
@@ -912,7 +970,6 @@ body {
     outline: none;
 }
 
-/* Custom Tabs for Apps */
 .app-tabs {
     display: flex;
     background: rgba(0, 0, 0, 0.2);
@@ -939,7 +996,6 @@ body {
     background: rgba(255, 255, 255, 0.1);
 }
 
-/* Settings Layout */
 .settings-container {
     display: flex;
     height: 100%;
@@ -968,8 +1024,37 @@ body {
     color: #000;
 }
 
-.settings-content {
-    flex: 1;
-    padding: 20px;
-    overflow-y: auto;
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    #desktop-switcher {
+        display: none !important;
+    }
+    
+    .taskbar-status {
+        display: none;
+    }
+    
+    #clock {
+        font-size: 0.8em;
+    }
+    
+    .window {
+        width: 95% !important;
+        left: 2.5% !important;
+    }
+    
+    #start-menu {
+        width: 90%;
+        left: 5%;
+        bottom: 50px;
+    }
+    
+    .desktop-icon {
+        transform: scale(0.8);
+    }
+}
+
+.desktop-icon:focus, .taskbar-item:focus {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
 }

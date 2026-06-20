@@ -27,8 +27,8 @@ const DB_NAME = 'ApexOS_VFS';
 const STORE_NAME = 'files';
 
 const ICON_GRID = {
-    width: 100,
-    height: 110,
+    width: 110,
+    height: 130,
     margin: 20,
     topOffset: 60
 };
@@ -72,8 +72,8 @@ const Storage = {
                 if (e.target.result) {
                     VFS = e.target.result;
                 } else {
-                    // Migrate from localStorage if exists
-                    const saved = localStorage.getItem('apex_vfs');
+
+                    const saved = localStorage.getItem('apex_vfs'); // Migratation from localStorage if exists
                     if (saved) {
                         VFS = JSON.parse(saved);
                         this.save();
@@ -94,7 +94,7 @@ const Storage = {
     }
 };
 
-// --- Registry System ---
+// Code for Registry starts here
 const Registry = {
     HKLM: {},
     HKCU: {},
@@ -103,8 +103,8 @@ const Registry = {
             this.HKLM = JSON.parse(localStorage.getItem('registry_hklm') || '{}');
             this.HKCU = JSON.parse(localStorage.getItem('registry_hkcu') || '{}');
             
-            // Default HKLM settings
-            if (!this.HKLM['Software\\System\\Version']) {
+
+            if (!this.HKLM['Software\\System\\Version']) { // Default HKLM settings
                 this.HKLM['Software\\System\\Version'] = 'ApexOS 1.5.0';
                 this.HKLM['Software\\System\\Theme'] = 'theme-sleek';
                 this.save();
@@ -129,7 +129,7 @@ const Registry = {
     }
 };
 
-// --- Process Manager ---
+// Code for  Process Manager starts here
 const ProcessManager = {
     processes: [],
     nextPid: 101,
@@ -152,7 +152,6 @@ const ProcessManager = {
         this.processes = this.processes.filter(p => p.pid !== pid);
     },
     getProcesses() {
-        // Simulate CPU
         this.processes.forEach(p => {
             p.cpu = Math.floor(Math.random() * 12) + 1;
         });
@@ -160,7 +159,7 @@ const ProcessManager = {
     }
 };
 
-// --- Services Manager ---
+// Code for Services Manager starts here
 const ServicesManager = {
     services: [
         { name: "Network Service", status: "Running", id: 'network' },
@@ -321,11 +320,10 @@ const Kernel = {
 
         await Storage.load(); // Grab user's files before we start the show
 
-        // Let's play the boot sound
+        // boot sound
         const bootSound = new Audio('assets/boot-sound.wav');
         bootSound.play().catch(e => console.log("Audio play failed:", e));
-        
-        // --- Apply System Settings ---
+
         const savedTheme = this.Registry.get('HKLM\\Software\\System\\Theme', 'theme-sleek');
         document.body.className = savedTheme;
 
@@ -361,6 +359,9 @@ const Kernel = {
         if (this.Registry.get('HKCU\\Control Panel\\Accessibility\\HighContrast', false)) document.body.classList.add('accessibility-high-contrast');
         if (this.Registry.get('HKCU\\Control Panel\\Accessibility\\LargeText', false)) document.body.classList.add('accessibility-large-text');
         if (this.Registry.get('HKCU\\Control Panel\\Accessibility\\NoAnimations', false)) document.body.classList.add('accessibility-no-animations');
+
+        // Graphics Acceleration
+        if (this.Registry.get('HKLM\\Software\\System\\GPUAcceleration', true)) document.body.classList.add('gpu-acceleration');
 
         // User Profile
         const username = this.Registry.get('HKCU\\Software\\ApexOS\\User\\Name', 'Apex User');
@@ -470,11 +471,11 @@ const Kernel = {
     }
 };
 
-// --- Window Management ---
+// Code for Window Management starts here
 // I'm keeping this simple but expandable. Using a class for this 
 // was a good call—makes managing multiple instances way less of a headache.
 
-// --- System Utilities ---
+// Code for  System Utilities starts here
 // Handling notifications, shortcuts, and core system tasks.
 const System = {
     notifications: [],
@@ -507,7 +508,11 @@ const System = {
         
         // Sound effect based on type
         if (type === 'error' || type === 'warning') {
-            console.log("🔊 Playing alert sound...");
+            const now = Date.now();
+            if (!this._lastAlertTime || now - this._lastAlertTime > 1000) {
+                console.log("🔊 Playing alert sound...");
+                this._lastAlertTime = now;
+            }
         }
         
         setTimeout(() => {
@@ -796,7 +801,7 @@ const System = {
                 System.toggleSpotlight();
             }
 
-            // Clipboard Manager (Cmd/Win + V) - Mock
+            // Clipboard Manager (Cmd/Win + V)
             if (e.metaKey && e.key.toLowerCase() === 'v' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
                 e.preventDefault();
                 System.openClipboardManager();
@@ -809,6 +814,31 @@ const System = {
                 document.body.style.filter = 'hue-rotate(180deg)';
             }
 
+            // Win + E: Explorer
+            if (e.metaKey && e.key.toLowerCase() === 'e') {
+                e.preventDefault();
+                Apps.explorer.launch();
+            }
+            // Alt + E: Explorer
+            if (e.altKey && e.key.toLowerCase() === 'e') {
+                e.preventDefault();
+                Apps.explorer.launch();
+            }
+            // Win + F: Explorer (Finder)
+            if (e.metaKey && e.key.toLowerCase() === 'f') {
+                e.preventDefault();
+                Apps.explorer.launch();
+            }
+            // Alt + F: Explorer (Finder)
+            if (e.altKey && e.key.toLowerCase() === 'f') {
+                e.preventDefault();
+                Apps.explorer.launch();
+            }
+            // Ctrl + Shift + Esc: Task Manager
+            if (e.ctrlKey && e.shiftKey && e.key === 'Escape') {
+                e.preventDefault();
+                Apps.taskmgr.launch();
+            }
             // Win + L: Lock
             if (e.metaKey && e.key.toLowerCase() === 'l') {
                 e.preventDefault();
@@ -816,6 +846,11 @@ const System = {
             }
             // Win + R: Run
             if (e.metaKey && e.key.toLowerCase() === 'r') {
+                e.preventDefault();
+                this.launchRunDialog();
+            }
+            // Alt + R: Run
+            if (e.altKey && e.key.toLowerCase() === 'r') {
                 e.preventDefault();
                 this.launchRunDialog();
             }
@@ -850,7 +885,7 @@ const System = {
     },
 
     sortIcons() {
-        const appsWithIcons = ["terminal", "browser", "explorer", "editor", "notes", "calc", "clock", "settings", "snake", "paint", "weather", "media"];
+        const appsWithIcons = ["terminal", "browser", "explorer", "taskmgr", "editor", "notes", "calc", "clock", "settings", "snake", "paint", "weather", "media"];
         appsWithIcons.forEach(appKey => {
             localStorage.removeItem(`icon-pos-${appKey}`);
         });
@@ -878,16 +913,16 @@ class WindowManager {
         win.setAttribute('data-app-key', appKey);
         win.setAttribute('data-pid', proc.pid);
         
-        const winWidth = width;
-        const winHeight = height;
+        let winWidth = Math.min(width, window.innerWidth * 0.95);
+        let winHeight = Math.min(height, window.innerHeight * 0.85);
         const left = (window.innerWidth - winWidth) / 2;
-        const top = (window.innerHeight - winHeight) / 2;
+        const top = Math.max(45, (window.innerHeight - winHeight) / 2);
         const offset = this.windows.filter(w => w.desktop === this.currentDesktop).length * 20;
         
         win.style.width = `${winWidth}px`;
         win.style.height = `${winHeight}px`;
-        win.style.top = `${top + offset}px`;
-        win.style.left = `${left + offset}px`;
+        win.style.top = `${top + (offset % 100)}px`;
+        win.style.left = `${left + (offset % 100)}px`;
         win.style.zIndex = this.zIndexCounter++;
 
         win.innerHTML = `
@@ -900,14 +935,14 @@ class WindowManager {
                 </div>
             </div>
             <div class="window-content">${content}</div>
+            <div class="resizer resizer-r"></div>
+            <div class="resizer resizer-b"></div>
+            <div class="resizer resizer-rb"></div>
         `;
 
         win.querySelector('.close-btn').onclick = (e) => {
             e.stopPropagation();
-            win.remove();
-            Kernel.ProcessManager.killProcess(proc.pid);
-            this.windows = this.windows.filter(w => w.id !== id);
-            this.updateTaskbar();
+            this.closeWindow(win, proc.pid, id);
         };
 
         win.querySelector('.min-btn').onclick = (e) => {
@@ -922,17 +957,39 @@ class WindowManager {
         };
 
         win.onmousedown = (e) => {
-            if (!win.classList.contains('minimized')) {
-                win.style.zIndex = this.zIndexCounter++;
-            }
+            this.bringToFront(win);
         };
 
         this.makeDraggable(win);
+        this.makeResizable(win);
         this.container.appendChild(win);
-        const winObj = { id, title, element: win, appKey, pid: proc.pid, desktop: this.currentDesktop };
+        const winObj = { id, title, element: win, appKey, pid: proc.pid, desktop: this.currentDesktop, intervals: [] };
         this.windows.push(winObj);
         this.updateTaskbar();
+        this.bringToFront(win);
         return win;
+    }
+
+    bringToFront(win) {
+        if (!win.classList.contains('minimized')) {
+            win.style.zIndex = this.zIndexCounter++;
+            document.querySelectorAll('.window').forEach(w => w.classList.remove('active-window'));
+            win.classList.add('active-window');
+        }
+    }
+
+    closeWindow(win, pid, id) {
+        win.remove();
+        Kernel.ProcessManager.killProcess(pid);
+        const winObj = this.windows.find(w => w.id === id);
+        if (winObj && winObj.intervals) {
+            winObj.intervals.forEach(clearInterval);
+        }
+        if (winObj && winObj.onClose) {
+            winObj.onClose();
+        }
+        this.windows = this.windows.filter(w => w.id !== id);
+        this.updateTaskbar();
     }
 
     maximizeWindow(win) {
@@ -949,6 +1006,37 @@ class WindowManager {
         } else if (win.dataset.oldStyle) {
             win.style.cssText = win.dataset.oldStyle;
         }
+    }
+
+    makeResizable(win) {
+        const resizers = win.querySelectorAll('.resizer');
+        resizers.forEach(resizer => {
+            resizer.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const isRight = resizer.classList.contains('resizer-r') || resizer.classList.contains('resizer-rb');
+                const isBottom = resizer.classList.contains('resizer-b') || resizer.classList.contains('resizer-rb');
+                
+                const startWidth = parseInt(document.defaultView.getComputedStyle(win).width, 10);
+                const startHeight = parseInt(document.defaultView.getComputedStyle(win).height, 10);
+                const startX = e.clientX;
+                const startY = e.clientY;
+
+                const doDrag = (e) => {
+                    if (isRight) win.style.width = (startWidth + e.clientX - startX) + 'px';
+                    if (isBottom) win.style.height = (startHeight + e.clientY - startY) + 'px';
+                };
+
+                const stopDrag = () => {
+                    document.removeEventListener('mousemove', doDrag);
+                    document.removeEventListener('mouseup', stopDrag);
+                };
+
+                document.addEventListener('mousemove', doDrag);
+                document.addEventListener('mouseup', stopDrag);
+            });
+        });
     }
 
     switchDesktop(n) {
@@ -969,11 +1057,14 @@ class WindowManager {
         this.windows.forEach(w => {
             const btn = document.createElement('div');
             btn.className = 'taskbar-item';
+            btn.setAttribute('tabindex', '0');
+            btn.setAttribute('role', 'button');
+            btn.setAttribute('aria-label', `Switch to ${w.title}`);
             if (w.element.classList.contains('minimized')) {
                 btn.style.opacity = '0.5';
             }
             
-            // Try to add icon if we have it
+            // Add available icons
             if (w.appKey && Apps[w.appKey]) {
                 const icon = document.createElement('img');
                 icon.src = Apps[w.appKey].icon;
@@ -1016,6 +1107,9 @@ class WindowManager {
 
         handle.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return; // Only left click
+            let hasMoved = false;
+            const clickX = e.clientX;
+            const clickY = e.clientY;
             
             // For icons, we might want to bring them to front or just handle the drag
             if (isIcon) {
@@ -1041,48 +1135,52 @@ class WindowManager {
                 if (isIcon) {
                     element.style.zIndex = 150; // Match the new container z-index
                     
-                    // Snap to grid
-                    const left = parseInt(element.style.left);
-                    const top = parseInt(element.style.top);
-                    const grid = typeof ICON_GRID !== 'undefined' ? ICON_GRID : (window.ICON_GRID || { margin: 20, width: 100, topOffset: 60, height: 110 });
-                    const snappedLeft = Math.round((left - grid.margin) / grid.width) * grid.width + grid.margin;
-                    const snappedTop = Math.round((top - grid.topOffset) / grid.height) * grid.height + grid.topOffset;
-                    
-                    element.style.left = `${snappedLeft}px`;
-                    element.style.top = `${snappedTop}px`;
+                    // Only snap and save if it actually moved
+                    if (hasMoved) {
+                        const left = parseInt(element.style.left);
+                        const top = parseInt(element.style.top);
+                        const grid = ICON_GRID;
+                        const snappedLeft = Math.round((left - grid.margin) / grid.width) * grid.width + grid.margin;
+                        const snappedTop = Math.round((top - grid.topOffset) / grid.height) * grid.height + grid.topOffset;
+                        
+                        element.style.left = `${snappedLeft}px`;
+                        element.style.top = `${snappedTop}px`;
 
-                    // Save position
-                    const appKey = element.getAttribute('data-app');
-                    localStorage.setItem(`icon-pos-${appKey}`, JSON.stringify({
-                        top: element.style.top,
-                        left: element.style.left
-                    }));
+                        // Save position
+                        const appKey = element.getAttribute('data-app');
+                        localStorage.setItem(`icon-pos-${appKey}`, JSON.stringify({
+                            top: element.style.top,
+                            left: element.style.left
+                        }));
+                    }
                 } else {
                     element.style.border = "";
                     // Snap to Top -> Maximize
                     if (e.clientY < 10) {
-                        element.classList.add('maximized');
-                        element.querySelector('.max-btn').textContent = '❐';
+                        this.maximizeWindow(element);
                     } 
                     // Snap to Left -> Half Screen Left
                     else if (e.clientX < 10) {
                         element.style.top = '0';
                         element.style.left = '0';
                         element.style.width = '50%';
-                        element.style.height = '100%';
+                        element.style.height = 'calc(100% - 40px)';
                     }
                     // Snap to Right -> Half Screen Right
                     else if (e.clientX > window.innerWidth - 10) {
                         element.style.top = '0';
                         element.style.left = '50%';
                         element.style.width = '50%';
-                        element.style.height = '100%';
+                        element.style.height = 'calc(100% - 40px)';
                     }
                 }
             };
 
             const elementDrag = (e) => {
                 e.preventDefault();
+                if (Math.abs(e.clientX - clickX) > 5 || Math.abs(e.clientY - clickY) > 5) {
+                    hasMoved = true;
+                }
                 pos1 = pos3 - e.clientX;
                 pos2 = pos4 - e.clientY;
                 pos3 = e.clientX;
@@ -1090,7 +1188,7 @@ class WindowManager {
 
                 if (!isIcon && element.classList.contains('maximized')) {
                     // If moving while maximized, restore and follow mouse
-                    element.classList.remove('maximized');
+                    this.maximizeWindow(element);
                     element.style.width = '400px';
                     element.style.height = '300px';
                 }
@@ -1246,7 +1344,9 @@ const Apps = {
                     } else if (command === "notify") {
                         System.notify(args.slice(1).join(" ") || "Terminal notification", "info");
                     } else if (command === "help") {
-                        output.innerHTML += `<div>Available: ls, pwd, mkdir, touch, rm, cat, echo, ping, uname, uptime, fortune, notify, clear, help, whoami, date, neofetch, theme, matrix, weather, snake, calc, editor, explorer, reboot, exit</div>`;
+                        output.innerHTML += `<div>Available: ls, pwd, mkdir, touch, rm, cat, echo, ping, uname, uptime, fortune, notify, clear, help, whoami, date, neofetch, theme, matrix, weather, snake, calc, editor, explorer, taskmgr, top, reboot, exit</div>`;
+                    } else if (command === "taskmgr" || command === "top") {
+                        Apps.taskmgr.launch(command === "top" ? 'performance' : 'processes');
                     } else if (command === "whoami") {
                         output.innerHTML += `<div>apex_user</div>`;
                     } else if (command === "clear") {
@@ -1280,6 +1380,10 @@ const Apps = {
                                 </div>
                             </div>
                         `;
+                    } else if (command === "matrix") {
+                        Apps.terminal.launchMatrix();
+                    } else if (command === "weather") {
+                        Apps.weather.launch();
                     } else if (command === "snake") {
                         Apps.snake.launch();
                     } else if (command === "calc") {
@@ -1363,24 +1467,37 @@ const Apps = {
         icon: "assets/folder.png",
         launch: () => {
             const winId = `explorer-${Math.random().toString(36).substring(2, 9)}`;
+            let currentPath = Kernel.currentDir;
             
             const renderFiles = () => {
-                const dir = Kernel.getDirObj();
+                const dir = Kernel.getDirObj(currentPath);
                 if (!dir) return "";
-                return Object.keys(dir).map(f => {
+                
+                let html = "";
+                if (currentPath !== "/") {
+                    html += `
+                        <div class="file-item" data-file=".." data-type="dir" style="cursor:pointer; text-align:center; padding:5px; border:1px solid transparent">
+                            <div style="font-size:2.5em">⬆️</div>
+                            <div style="font-size:0.7em">..</div>
+                        </div>
+                    `;
+                }
+
+                html += Object.keys(dir).map(f => {
                     const isDir = typeof dir[f] === 'object';
                     return `
                         <div class="file-item" data-file="${f}" data-type="${isDir ? 'dir' : 'file'}" style="cursor:pointer; text-align:center; padding:5px; border:1px solid transparent">
-                            <div style="font-size:1.5em">${isDir ? '📁' : '📄'}</div>
+                            <div style="font-size:2.5em">${isDir ? '📁' : '📄'}</div>
                             <div style="font-size:0.7em; overflow:hidden; text-overflow:ellipsis">${f}</div>
                         </div>
                     `;
                 }).join('');
+                return html;
             };
             
-            wm.createWindow("File Explorer", `
+            const win = wm.createWindow("File Explorer", `
                 <div style="height:100%; display:flex; flex-direction:column">
-                    <div class="explorer-path" style="border-bottom:1px solid #333; margin-bottom:10px; padding:5px; font-size:0.8em">Location: ${Kernel.currentDir}</div>
+                    <div id="${winId}-path" class="explorer-path" style="border-bottom:1px solid #333; margin-bottom:10px; padding:5px; font-size:0.8em">Location: ${currentPath}</div>
                     <div style="display:flex; gap:10px; padding:0 5px 10px 5px">
                         <button id="${winId}-refresh" style="background:transparent; color:var(--accent-color); border:1px solid var(--accent-color); cursor:pointer; font-size:0.7em; padding:2px 5px">Refresh</button>
                         <button id="${winId}-upload" style="background:transparent; color:var(--accent-color); border:1px solid var(--accent-color); cursor:pointer; font-size:0.7em; padding:2px 5px">Upload</button>
@@ -1400,15 +1517,26 @@ const Apps = {
                     item.onclick = () => {
                         const fileName = item.getAttribute('data-file');
                         const type = item.getAttribute('data-type');
-                        if (type === 'file') {
-                            Apps.editor.launch(fileName);
+                        if (type === 'dir') {
+                            if (fileName === "..") {
+                                const parts = currentPath.split('/').filter(p => p);
+                                parts.pop();
+                                currentPath = "/" + parts.join("/");
+                            } else {
+                                currentPath = currentPath === "/" ? "/" + fileName : currentPath + "/" + fileName;
+                            }
+                            refresh();
+                        } else {
+                            Apps.editor.launch(currentPath === "/" ? currentPath + fileName : currentPath + "/" + fileName);
                         }
                     };
                     item.oncontextmenu = (e) => {
                         e.preventDefault();
                         const fileName = item.getAttribute('data-file');
-                        if (confirm(`Download ${fileName}?`)) {
-                            Kernel.downloadFile(fileName);
+                        if (item.getAttribute('data-type') === 'file') {
+                            if (confirm(`Download ${fileName}?`)) {
+                                Kernel.downloadFile(currentPath === "/" ? currentPath + fileName : currentPath + "/" + fileName);
+                            }
                         }
                     };
                     item.onmouseover = () => item.style.borderColor = 'var(--accent-color)';
@@ -1418,7 +1546,9 @@ const Apps = {
 
             const refresh = () => {
                 const filesElem = document.getElementById(`${winId}-files`);
-                if (filesElem) {
+                const pathElem = document.getElementById(`${winId}-path`);
+                if (filesElem && pathElem) {
+                    pathElem.textContent = `Location: ${currentPath}`;
                     filesElem.innerHTML = renderFiles();
                     attachHandlers();
                 }
@@ -1426,13 +1556,14 @@ const Apps = {
 
             setTimeout(() => {
                 attachHandlers();
-                document.getElementById(`${winId}-refresh`).onclick = refresh;
-                document.getElementById(`${winId}-upload`).onclick = () => {
-                    document.getElementById(`${winId}-file-input`).click();
-                };
-                document.getElementById(`${winId}-file-input`).onchange = async (e) => {
+                const refreshBtn = document.getElementById(`${winId}-refresh`);
+                const uploadBtn = document.getElementById(`${winId}-upload`);
+                const fileInp = document.getElementById(`${winId}-file-input`);
+                if(refreshBtn) refreshBtn.onclick = refresh;
+                if(uploadBtn) uploadBtn.onclick = () => fileInp.click();
+                if(fileInp) fileInp.onchange = async (e) => {
                     if (e.target.files.length > 0) {
-                        await Kernel.uploadFile(e.target.files[0]);
+                        await Kernel.uploadFile(e.target.files[0], currentPath);
                         refresh();
                     }
                 };
@@ -1582,6 +1713,7 @@ const Apps = {
                     <div class="settings-sidebar">
                         <div class="settings-nav-item" id="${winId}-nav-general" data-tab="general">General</div>
                         <div class="settings-nav-item" id="${winId}-nav-personal" data-tab="personal">Personalization</div>
+                        <div class="settings-nav-item" id="${winId}-nav-performance" data-tab="performance">Performance</div>
                         <div class="settings-nav-item" id="${winId}-nav-accessibility" data-tab="accessibility">Accessibility</div>
                         <div class="settings-nav-item" id="${winId}-nav-accounts" data-tab="accounts">Accounts</div>
                         <div class="settings-nav-item" id="${winId}-nav-privacy" data-tab="privacy">Privacy</div>
@@ -1595,7 +1727,7 @@ const Apps = {
             `, 650, 520, 'settings');
 
             const content = document.getElementById(`${winId}-content`);
-            const navItems = ['general', 'personal', 'accessibility', 'accounts', 'privacy', 'system', 'help'];
+            const navItems = ['general', 'personal', 'performance', 'accessibility', 'accounts', 'privacy', 'system', 'help'];
 
             const setActiveTab = (tab) => {
                 document.querySelectorAll(`#${winId} .settings-nav-item`).forEach(n => {
@@ -1609,6 +1741,33 @@ const Apps = {
                 if (tab === 'privacy') renderPrivacy();
                 if (tab === 'system') renderSystem();
                 if (tab === 'help') renderHelp();
+                if (tab === 'performance') renderPerformance();
+            };
+
+            const renderPerformance = () => {
+                const gpuAccel = Kernel.Registry.get('HKLM\\Software\\System\\GPUAcceleration', true);
+                content.innerHTML = `
+                    <h2 style="margin-bottom:20px">Performance</h2>
+                    <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:12px; margin-bottom:15px">
+                        <div style="display:flex; justify-content:space-between; align-items:center">
+                            <div>
+                                <div style="color:white; font-weight:bold">Hardware Acceleration</div>
+                                <div style="font-size:0.8em; opacity:0.6">Use GPU for smoother animations and graphics</div>
+                            </div>
+                            <input type="checkbox" id="${winId}-gpu-accel" ${gpuAccel ? 'checked' : ''} style="width:20px; height:20px">
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById(`${winId}-gpu-accel`).onchange = (e) => {
+                    Kernel.Registry.set('HKLM\\Software\\System\\GPUAcceleration', e.target.checked);
+                    if (e.target.checked) {
+                        document.body.classList.add('gpu-acceleration');
+                    } else {
+                        document.body.classList.remove('gpu-acceleration');
+                    }
+                    System.notify(`Hardware Acceleration ${e.target.checked ? 'Enabled' : 'Disabled'}`);
+                };
             };
 
             const renderGeneral = () => {
@@ -1937,37 +2096,7 @@ const Apps = {
         title: "System Monitor",
         icon: "assets/settings.png",
         launch: () => {
-            const winId = `sysmon-${Math.random().toString(36).substring(2, 9)}`;
-            wm.createWindow("System Monitor", `
-                <div style="padding:10px">
-                    <p>OS: ApexOS v1.5.0</p>
-                    <p>Kernel: ApexKernel 0.2.0</p>
-                    <p>VFS: Online (${Object.keys(VFS["/"]["home"]["user"]).length} files)</p>
-                    <div style="margin-top:10px">
-                        <label>CPU Usage:</label>
-                        <div style="width:100%; height:10px; background:#222; margin-top:5px; border:1px solid #444">
-                            <div id="${winId}-cpu" style="width:15%; height:100%; background:var(--accent-color)"></div>
-                        </div>
-                    </div>
-                    <div style="margin-top:10px">
-                        <label>Memory Usage:</label>
-                        <div style="width:100%; height:10px; background:#222; margin-top:5px; border:1px solid #444">
-                            <div id="${winId}-mem" style="width:42%; height:100%; background:var(--accent-color)"></div>
-                        </div>
-                    </div>
-                </div>
-            `, 300, 300, 'sysmon');
-
-            const interval = setInterval(() => {
-                const cpu = document.getElementById(`${winId}-cpu`);
-                const mem = document.getElementById(`${winId}-mem`);
-                if (!cpu || !mem) {
-                    clearInterval(interval);
-                    return;
-                }
-                cpu.style.width = (Math.random() * 20 + 5) + "%";
-                mem.style.width = (Math.random() * 10 + 40) + "%";
-            }, 2000);
+            Apps.taskmgr.launch('performance');
         }
     },
     about: {
@@ -1995,15 +2124,16 @@ const Apps = {
     },
     taskmgr: {
         title: "Task Manager",
-        icon: "assets/settings.png",
-        launch: () => {
+        icon: "assets/terminal.png",
+        launch: (defaultTab = 'processes') => {
             const winId = `taskmgr-${Date.now()}`;
-            let currentTab = 'processes';
+            let currentTab = defaultTab;
             
             const win = wm.createWindow("Task Manager", `
                 <div class="taskmgr-tabs" style="display:flex; border-bottom:1px solid #333; background:#222">
-                    <div id="${winId}-tab-proc" class="taskmgr-tab active" style="padding:10px; cursor:pointer; flex:1; text-align:center">Processes</div>
-                    <div id="${winId}-tab-serv" class="taskmgr-tab" style="padding:10px; cursor:pointer; flex:1; text-align:center">Services</div>
+                    <div id="${winId}-tab-proc" class="taskmgr-tab ${currentTab === 'processes' ? 'active' : ''}" style="padding:10px; cursor:pointer; flex:1; text-align:center">Processes</div>
+                    <div id="${winId}-tab-serv" class="taskmgr-tab ${currentTab === 'services' ? 'active' : ''}" style="padding:10px; cursor:pointer; flex:1; text-align:center">Services</div>
+                    <div id="${winId}-tab-perf" class="taskmgr-tab ${currentTab === 'performance' ? 'active' : ''}" style="padding:10px; cursor:pointer; flex:1; text-align:center">Performance</div>
                 </div>
                 <div id="${winId}-content" style="padding:10px; overflow-y:auto; height:calc(100% - 40px)"></div>
             `, 450, 450, 'taskmgr');
@@ -2051,7 +2181,7 @@ const Apps = {
                             </tbody>
                         </table>
                     `;
-                } else {
+                } else if (currentTab === 'services') {
                     const services = Kernel.Services.services;
                     content.innerHTML = `
                         <table class="task-table">
@@ -2078,36 +2208,79 @@ const Apps = {
                             </tbody>
                         </table>
                     `;
+                } else if (currentTab === 'performance') {
+                    content.innerHTML = `
+                        <div style="padding:10px">
+                            <h3 style="margin-top:0">System Resources</h3>
+                            <div style="margin-top:15px">
+                                <div style="display:flex; justify-content:space-between; margin-bottom:5px">
+                                    <label>CPU Usage</label>
+                                    <span id="${winId}-cpu-val">0%</span>
+                                </div>
+                                <div style="width:100%; height:12px; background:#222; border:1px solid #444; border-radius:6px; overflow:hidden">
+                                    <div id="${winId}-cpu-bar" style="width:0%; height:100%; background:var(--accent-color); transition: width 0.5s"></div>
+                                </div>
+                            </div>
+                            <div style="margin-top:20px">
+                                <div style="display:flex; justify-content:space-between; margin-bottom:5px">
+                                    <label>Memory Usage</label>
+                                    <span id="${winId}-mem-val">0%</span>
+                                </div>
+                                <div style="width:100%; height:12px; background:#222; border:1px solid #444; border-radius:6px; overflow:hidden">
+                                    <div id="${winId}-mem-bar" style="width:0%; height:100%; background:var(--accent-color); transition: width 0.5s"></div>
+                                </div>
+                            </div>
+                            <div style="margin-top:30px; border-top:1px solid #333; padding-top:15px">
+                                <p style="font-size:0.9em; opacity:0.8">OS: ApexOS v1.5.0</p>
+                                <p style="font-size:0.9em; opacity:0.8">Kernel: ApexKernel 0.2.0</p>
+                                <p style="font-size:0.9em; opacity:0.8">System Uptime: ${Math.floor(performance.now() / 1000)}s</p>
+                            </div>
+                        </div>
+                    `;
+                    updatePerf();
+                }
+            };
+
+            const updatePerf = () => {
+                const cpuBar = document.getElementById(`${winId}-cpu-bar`);
+                const memBar = document.getElementById(`${winId}-mem-bar`);
+                const cpuVal = document.getElementById(`${winId}-cpu-val`);
+                const memVal = document.getElementById(`${winId}-mem-val`);
+                if (cpuBar && memBar) {
+                    const c = Math.floor(Math.random() * 20 + 5);
+                    const m = Math.floor(Math.random() * 10 + 40);
+                    cpuBar.style.width = c + "%";
+                    memBar.style.width = m + "%";
+                    cpuVal.textContent = c + "%";
+                    memVal.textContent = m + "%";
                 }
             };
 
             const tabProc = document.getElementById(`${winId}-tab-proc`);
             const tabServ = document.getElementById(`${winId}-tab-serv`);
+            const tabPerf = document.getElementById(`${winId}-tab-perf`);
 
-            tabProc.onclick = () => {
-                currentTab = 'processes';
-                tabProc.classList.add('active');
-                tabServ.classList.remove('active');
+            const switchTab = (tab) => {
+                currentTab = tab;
+                [tabProc, tabServ, tabPerf].forEach(t => t.classList.remove('active'));
+                if (tab === 'processes') tabProc.classList.add('active');
+                if (tab === 'services') tabServ.classList.add('active');
+                if (tab === 'performance') tabPerf.classList.add('active');
                 render();
             };
 
-            tabServ.onclick = () => {
-                currentTab = 'services';
-                tabServ.classList.add('active');
-                tabProc.classList.remove('active');
-                render();
-            };
+            tabProc.onclick = () => switchTab('processes');
+            tabServ.onclick = () => switchTab('services');
+            tabPerf.onclick = () => switchTab('performance');
 
             render();
-            const interval = setInterval(render, 2000);
+            const interval = setInterval(() => {
+                if (currentTab === 'performance') updatePerf();
+                else render();
+            }, 2000);
             
-            // Cleanup interval when window is closed
-            const checkExists = setInterval(() => {
-                if (!document.getElementById(`${winId}-content`)) {
-                    clearInterval(interval);
-                    clearInterval(checkExists);
-                }
-            }, 5000);
+            const winObj = wm.windows.find(w => w.element === win);
+            if (winObj) winObj.intervals.push(interval);
         }
     },
     quotes: {
@@ -2174,10 +2347,10 @@ const Apps = {
         launch: () => {
             const winId = `snake-${Date.now()}`;
             const win = wm.createWindow("Snake Retro", `
-                <div style="text-align:center; padding:5px">Score: <span id="${winId}-score">0</span></div>
-                <canvas id="${winId}-canvas" class="snake-canvas" width="300" height="300"></canvas>
-                <div style="font-size:0.7em; text-align:center; margin-top:5px">Use Arrow Keys to Play</div>
-            `, 340, 400, 'snake');
+                <div style="text-align:center; padding:5px; background:#111; color:var(--accent-color); font-family:monospace">Score: <span id="${winId}-score">0</span></div>
+                <canvas id="${winId}-canvas" class="snake-canvas" width="300" height="300" style="display:block; margin:0 auto; background:#000; border:2px solid #333"></canvas>
+                <div style="font-size:0.7em; text-align:center; margin-top:5px; opacity:0.7">Use Arrow Keys to Play | Click to Focus</div>
+            `, 340, 420, 'snake');
 
             const canvas = document.getElementById(`${winId}-canvas`);
             const ctx = canvas.getContext('2d');
@@ -2186,8 +2359,18 @@ const Apps = {
             let food = {x: Math.floor(Math.random() * 15) * box, y: Math.floor(Math.random() * 15) * box};
             let score = 0;
             let d;
+            let gameStarted = false;
 
             const direction = (e) => {
+                // Only react if this window is the active window
+                if (!win.classList.contains('active-window')) return;
+                
+                // Prevent scrolling with arrows
+                if([37, 38, 39, 40].includes(e.keyCode)) {
+                    e.preventDefault();
+                    gameStarted = true;
+                }
+
                 if(e.keyCode == 37 && d != "RIGHT") d = "LEFT";
                 else if(e.keyCode == 38 && d != "DOWN") d = "UP";
                 else if(e.keyCode == 39 && d != "LEFT") d = "RIGHT";
@@ -2196,11 +2379,24 @@ const Apps = {
             document.addEventListener("keydown", direction);
 
             const draw = () => {
+                if (!gameStarted && !d) {
+                    ctx.fillStyle = "black";
+                    ctx.fillRect(0, 0, 300, 300);
+                    ctx.fillStyle = "white";
+                    ctx.font = "20px Arial";
+                    ctx.textAlign = "center";
+                    ctx.fillText("Press Arrow Key", 150, 140);
+                    ctx.fillText("to Start", 150, 170);
+                    return;
+                }
+
                 ctx.fillStyle = "black";
                 ctx.fillRect(0, 0, 300, 300);
                 for(let i = 0; i < snake.length; i++){
-                    ctx.fillStyle = (i == 0) ? "var(--accent-color)" : "white";
+                    ctx.fillStyle = (i == 0) ? (getComputedStyle(document.documentElement).getPropertyValue('--accent-color').trim() || "#00ff41") : "white";
                     ctx.fillRect(snake[i].x, snake[i].y, box, box);
+                    ctx.strokeStyle = "black";
+                    ctx.strokeRect(snake[i].x, snake[i].y, box, box);
                 }
                 ctx.fillStyle = "red";
                 ctx.fillRect(food.x, food.y, box, box);
@@ -2216,27 +2412,41 @@ const Apps = {
                     score++;
                     document.getElementById(`${winId}-score`).textContent = score;
                     food = {x: Math.floor(Math.random() * 15) * box, y: Math.floor(Math.random() * 15) * box};
-                } else {
+                } else if (d) {
                     snake.pop();
                 }
-                let newHead = {x: snakeX, y: snakeY};
-                if(snakeX < 0 || snakeX >= 300 || snakeY < 0 || snakeY >= 300 || collision(newHead, snake)){
-                    clearInterval(game);
-                    document.removeEventListener("keydown", direction);
-                    alert("Game Over! Score: " + score);
+
+                if (d) {
+                    let newHead = {x: snakeX, y: snakeY};
+                    if(snakeX < 0 || snakeX >= 300 || snakeY < 0 || snakeY >= 300 || collision(newHead, snake)){
+                        gameStarted = false;
+                        d = null;
+                        System.notify("Game Over! Score: " + score, "warning");
+                        // Reset game data but don't clear interval, draw() will handle start screen
+                        snake = [{x: 9 * box, y: 10 * box}];
+                        score = 0;
+                        document.getElementById(`${winId}-score`).textContent = score;
+                    } else {
+                        snake.unshift(newHead);
+                    }
                 }
-                snake.unshift(newHead);
             };
 
             const collision = (head, array) => {
                 for(let i = 0; i < array.length; i++) if(head.x == array[i].x && head.y == array[i].y) return true;
                 return false;
             };
+            
             let game = setInterval(draw, 100);
-            win.querySelector('.close-btn').addEventListener('click', () => {
-                clearInterval(game);
-                document.removeEventListener("keydown", direction);
-            });
+            
+            // Register for cleanup
+            const winObj = wm.windows.find(w => w.element === win);
+            if (winObj) {
+                winObj.intervals.push(game);
+                winObj.onClose = () => {
+                    document.removeEventListener("keydown", direction);
+                };
+            }
         }
     },
     weather: {
@@ -2333,7 +2543,7 @@ const Apps = {
         icon: "assets/browser.png",
         launch: () => {
             const winId = `browser-${Date.now()}`;
-            let tabs = [{ title: "Wikipedia", url: "https://www.wikipedia.org" }];
+            let tabs = [{ title: "Google", url: "https://www.google.com/search?igu=1" }];
             let activeTabIdx = 0;
             let bookmarks = JSON.parse(localStorage.getItem('browser_bookmarks') || '[]');
             let history = JSON.parse(localStorage.getItem('browser_history') || '[]');
@@ -2428,7 +2638,7 @@ const Apps = {
             };
 
             document.getElementById(`${winId}-add-tab`).onclick = () => {
-                tabs.push({ title: "New Tab", url: "https://www.google.com" });
+                tabs.push({ title: "New Tab", url: "https://www.google.com/search?igu=1" });
                 activeTabIdx = tabs.length - 1;
                 render();
             };
@@ -2440,9 +2650,15 @@ const Apps = {
                     if (url.includes('.') && !url.includes(' ')) {
                         url = 'https://' + url;
                     } else {
-                        url = 'https://www.google.com/search?q=' + encodeURIComponent(url);
+                        url = 'https://www.google.com/search?igu=1&q=' + encodeURIComponent(url);
                     }
                 }
+
+                // Workaround for Google Refused to Connect
+                if (url.includes('google.') && !url.includes('igu=1')) {
+                    url += (url.includes('?') ? '&' : '?') + 'igu=1';
+                }
+
                 tabs[activeTabIdx].url = url;
                 tabs[activeTabIdx].title = url.split('/')[2] || url;
                 const frame = document.getElementById(`${winId}-frame-${activeTabIdx}`);
@@ -2554,15 +2770,16 @@ const Apps = {
                         <div class="app-tab active" id="${winId}-tab-clock">Clock</div>
                         <div class="app-tab" id="${winId}-tab-timer">Timer</div>
                         <div class="app-tab" id="${winId}-tab-stopwatch">Stopwatch</div>
+                        <div class="app-tab" id="${winId}-tab-world">World Clock</div>
                     </div>
-                    <div id="${winId}-content" style="flex:1; padding:20px; text-align:center; display:flex; flex-direction:column; justify-content:center">
+                    <div id="${winId}-content" style="flex:1; padding:10px; text-align:center; display:flex; flex-direction:column; justify-content:center; overflow:hidden">
                         <!-- Content injected here -->
                     </div>
                 </div>
-            `, 400, 350, 'clock');
+            `, 450, 400, 'clock');
 
             const content = document.getElementById(`${winId}-content`);
-            const tabs = ['clock', 'timer', 'stopwatch'];
+            const tabs = ['clock', 'timer', 'stopwatch', 'world'];
             
             let stopwatchSeconds = 0;
             let stopwatchInterval = null;
@@ -2674,13 +2891,62 @@ const Apps = {
                 };
             };
 
+            const renderWorldClock = () => {
+                content.innerHTML = `
+                    <div style="height:100%; display:flex; flex-direction:column">
+                        <div id="${winId}-map" style="flex:1; background:url('https://upload.wikimedia.org/wikipedia/commons/8/80/World_map_-_low_resolution.svg') no-repeat center; background-size:100% 100%; position:relative; cursor:crosshair; min-height:180px; background-color:rgba(255,255,255,0.05); border-radius:8px">
+                            <div id="${winId}-map-marker" style="position:absolute; width:12px; height:12px; background:var(--accent-color); border:2px solid white; border-radius:50%; display:none; transform:translate(-50%, -50%); pointer-events:none; box-shadow:0 0 10px var(--accent-color)"></div>
+                        </div>
+                        <div id="${winId}-world-time" style="padding:15px; margin-top:10px; background:rgba(0,0,0,0.2); border-radius:8px">
+                            <div style="opacity:0.6">Click the map to check world time</div>
+                        </div>
+                    </div>
+                `;
+                const map = document.getElementById(`${winId}-map`);
+                const marker = document.getElementById(`${winId}-map-marker`);
+                const worldTime = document.getElementById(`${winId}-world-time`);
+
+                map.onclick = (e) => {
+                    const rect = map.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    const percentX = x / rect.width;
+                    
+                    // Approximate longitude and timezone
+                    const lon = (percentX * 360) - 180;
+                    const offset = Math.round(lon / 15);
+                    
+                    marker.style.left = x + 'px';
+                    marker.style.top = y + 'px';
+                    marker.style.display = 'block';
+
+                    const now = new Date();
+                    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+                    const targetTime = new Date(utc + (3600000 * offset));
+                    
+                    const timeStr = targetTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    worldTime.innerHTML = `
+                        <div style="font-size:0.8em; color:var(--accent-color); font-weight:bold; margin-bottom:5px">ESTIMATED TIME ZONE: UTC${offset >= 0 ? '+' : ''}${offset}</div>
+                        <div style="font-size:2em; color:white">${timeStr}</div>
+                        <div style="font-size:0.9em; opacity:0.7">${targetTime.toDateString()}</div>
+                    `;
+                };
+            };
+
             tabs.forEach(tab => {
                 document.getElementById(`${winId}-tab-${tab}`).onclick = (e) => {
                     document.querySelectorAll(`#${winId} .app-tab`).forEach(t => t.classList.remove('active'));
-                    e.target.classList.add('active');
+                    e.currentTarget.classList.add('active');
+                    
+                    clearInterval(stopwatchInterval);
+                    clearInterval(timerInterval);
+                    stopwatchInterval = null;
+                    timerInterval = null;
+
                     if (tab === 'clock') renderClock();
                     if (tab === 'timer') renderTimer();
                     if (tab === 'stopwatch') renderStopwatch();
+                    if (tab === 'world') renderWorldClock();
                 };
             });
 
@@ -3092,7 +3358,7 @@ const Apps = {
     },
     media: {
         title: "Music Player",
-        icon: "assets/folder.png",
+        icon: "assets/music-player.png",
         launch: () => {
             const winId = `media-${Date.now()}`;
             wm.createWindow("Music Player", `
@@ -3217,6 +3483,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Start Menu Toggle
     const startBtn = document.querySelector('.start-btn');
+    startBtn.setAttribute('tabindex', '0');
+    startBtn.setAttribute('role', 'button');
+    startBtn.setAttribute('aria-label', 'Start Menu');
+    
+    startBtn.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            startBtn.click();
+        }
+    });
+
     const startMenu = document.getElementById('start-menu');
     const ctxMenu = document.getElementById('context-menu');
 
@@ -3261,19 +3538,39 @@ document.addEventListener('DOMContentLoaded', () => {
     // Make Apps global so onclick in HTML works
     window.Apps = Apps;
     window.System = System;
+    window.Kernel = Kernel;
 
     // Handle Start Menu App Launches
     document.querySelectorAll('.start-menu-item').forEach(item => {
+        const appName = item.getAttribute('data-app');
+        item.setAttribute('tabindex', '0');
+        item.setAttribute('role', 'button');
+        if (Apps[appName]) {
+            const icon = document.createElement('img');
+            icon.src = Apps[appName].icon;
+            icon.style.width = '24px';
+            icon.style.height = '24px';
+            icon.style.marginRight = '12px';
+            icon.style.borderRadius = '4px';
+            item.style.display = 'flex';
+            item.style.alignItems = 'center';
+            item.prepend(icon);
+        }
         item.onclick = () => {
-            const appName = item.getAttribute('data-app');
             if (Apps[appName]) Apps[appName].launch();
             startMenu.classList.add('hidden');
+        };
+        item.onkeydown = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                item.click();
+            }
         };
     });
 
     // Desktop Icons
     const desktopIcons = document.getElementById('desktop-icons');
-    const appsWithIcons = ["terminal", "browser", "explorer", "editor", "notes", "calc", "clock", "settings", "snake", "paint", "weather", "media"];
+    const appsWithIcons = ["terminal", "browser", "explorer", "taskmgr", "editor", "notes", "calc", "clock", "settings", "snake", "paint", "weather", "media"];
     
     const refreshDesktopIcons = () => {
         desktopIcons.innerHTML = '';
@@ -3281,6 +3578,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const app = Apps[appKey];
             const icon = document.createElement('div');
             icon.className = 'desktop-icon';
+            icon.setAttribute('tabindex', '0');
+            icon.setAttribute('role', 'button');
+            icon.setAttribute('aria-label', `Launch ${app.title}`);
             icon.setAttribute('data-app', appKey);
             icon.style.animationDelay = `${index * 50}ms`;
             icon.title = `Launch ${app.title}`;
@@ -3295,7 +3595,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 icon.style.zIndex = 150;
             } else {
                 // Smart grid placement
-                const grid = typeof ICON_GRID !== 'undefined' ? ICON_GRID : (window.ICON_GRID || { width: 100, height: 110, margin: 20, topOffset: 60 });
+                const grid = ICON_GRID;
                 const desktopHeight = window.innerHeight - grid.topOffset;
                 
                 const iconsPerCol = Math.max(1, Math.floor(desktopHeight / grid.height));
@@ -3307,10 +3607,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 icon.style.top = `${grid.topOffset + (row * grid.height)}px`;
             }
 
-            const iconHtml = app.icon.endsWith('.png') ? `<img src="${app.icon}" alt="${app.title}" style="pointer-events:none; width:48px; height:48px;">` : app.icon;
+            const iconHtml = app.icon.endsWith('.png') ? 
+                `<img src="${app.icon}" alt="${app.title}" style="pointer-events:none; width:54px; height:54px;">` : 
+                `<div style="font-size:3em">${app.icon}</div>`;
             icon.innerHTML = `
-                <div class="icon-graphic" style="display:flex; align-items:center; justify-content:center; width:64px; height:64px; background:rgba(255,255,255,0.05); border-radius:10px; margin-bottom:5px;">${iconHtml}</div>
-                <div class="icon-label" style="font-size:0.8em; text-shadow: 1px 1px 2px black;">${app.title}</div>
+                <div class="icon-graphic" style="display:flex; align-items:center; justify-content:center; width:64px; height:64px; background:rgba(255,255,255,0.05); border-radius:12px;">${iconHtml}</div>
+                <div class="icon-label">${app.title}</div>
             `;
             
             icon.style.opacity = '1';
@@ -3342,6 +3644,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
+            icon.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    app.launch();
+                }
+            });
+
             wm.makeDraggable(icon, true);
             desktopIcons.appendChild(icon);
             console.log(`Rendered icon: ${appKey} at ${icon.style.left}, ${icon.style.top}`);
@@ -3351,10 +3660,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     System.refreshDesktopIcons = refreshDesktopIcons;
 
-    refreshDesktopIcons();
-    // Re-call after a small delay to ensure all DOM and CSS are ready
-    setTimeout(refreshDesktopIcons, 100);
+    // Initial render
+    if (document.readyState === 'complete') {
+        refreshDesktopIcons();
+    } else {
+        window.addEventListener('load', refreshDesktopIcons);
+    }
+    
+    // Ensure icons are correctly placed after a short delay for layout calculation
     setTimeout(refreshDesktopIcons, 500);
+    
     window.addEventListener('resize', () => {
         refreshDesktopIcons();
     });

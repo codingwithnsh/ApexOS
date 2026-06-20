@@ -50,6 +50,7 @@
                 <div class="start-menu-item" data-app="terminal">Terminal</div>
                 <div class="start-menu-item" data-app="browser">ApexBrowser</div>
                 <div class="start-menu-item" data-app="explorer">File Explorer</div>
+                <div class="start-menu-item" data-app="taskmgr">Task Manager</div>
                 <div class="start-menu-item" data-app="editor">ApexPad</div>
                 <div class="start-menu-item" data-app="notes">Sticky Notes</div>
                 <div class="start-menu-item" data-app="calc">Calculator</div>
@@ -99,7 +100,7 @@
         </div>
         <div id="context-menu" class="hidden">
             <div class="ctx-item" onclick="Apps.terminal.launch()">Open Terminal</div>
-            <div class="ctx-item" onclick="Apps.sysmon.launch()">System Monitor</div>
+            <div class="ctx-item" onclick="Apps.taskmgr.launch('performance')">System Performance</div>
             <hr style="border:0; border-top:1px solid #333">
             <div class="ctx-item" onclick="Kernel.makeDir('New Folder'); System.refreshDesktopIcons()">New Folder</div>
             <div class="ctx-item" onclick="Kernel.saveFile('newfile.txt', ''); System.refreshDesktopIcons()">New File</div>
