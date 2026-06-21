@@ -765,7 +765,7 @@ const System = {
 
         const dialog = document.createElement('div');
         dialog.id = 'run-dialog';
-        dialog.style = "position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(20,20,20,0.9); backdrop-filter:blur(20px); padding:20px; border-radius:15px; border:1px solid var(--accent-color); z-index:12000; width:400px; box-shadow:0 0 50px rgba(0,0,0,0.8)";
+        dialog.style = "position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(20,20,20,0.9); backdrop-filter:blur(20px); padding:20px; border-radius:15px; border:1px solid var(--accent-color); z-index:12000; width:400px; height:auto; display:block; box-shadow:0 0 50px rgba(0,0,0,0.8)";
         dialog.innerHTML = `
             <div style="margin-bottom:15px; font-weight:bold; color:var(--accent-color)">Run Command</div>
             <div style="display:flex; align-items:center">
@@ -955,6 +955,10 @@ class WindowManager {
             e.stopPropagation();
             this.maximizeWindow(win);
         };
+
+        win.querySelectorAll('.control-btn').forEach(btn => {
+            btn.onmousedown = (e) => e.stopPropagation();
+        });
 
         win.onmousedown = (e) => {
             this.bringToFront(win);
@@ -2731,11 +2735,14 @@ const Apps = {
                 if (!frame) {
                     frame = document.createElement('iframe');
                     frame.id = `${winId}-frame-${activeTabIdx}`;
-                    frame.src = activeTab.url;
+                    frame.setAttribute('allow', 'autoplay; camera; microphone; geolocation; clipboard-read; clipboard-write; fullscreen; display-capture; focus-without-user-activation;');
+                    frame.setAttribute('sandbox', 'allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-downloads allow-top-navigation-by-user-activation');
                     frame.style.cssText = "width:100%; height:100%; border:none; background:#fff; position:absolute; top:0; left:0";
                     frameContainer.appendChild(frame);
+                    go();
+                } else {
+                    frame.style.display = 'block';
                 }
-                frame.style.display = 'block';
             };
 
             const closeTab = (idx) => {
@@ -2757,9 +2764,21 @@ const Apps = {
                 render();
             };
 
-            const go = () => {
+            const go = async () => {
                 let url = urlInput.value.trim();
                 if (!url) return;
+
+                // Clean redirect links from search engines
+                if (url.includes('google.com/url?') || url.includes('bing.com/ck/')) {
+                    try {
+                        const urlObj = new URL(url);
+                        const realUrl = urlObj.searchParams.get('q') || urlObj.searchParams.get('url');
+                        if (realUrl && realUrl.startsWith('http')) {
+                            url = realUrl;
+                        }
+                    } catch (e) {}
+                }
+
                 if (!url.startsWith('http')) {
                     if (url.includes('.') && !url.includes(' ')) {
                         url = 'https://' + url;
@@ -2770,34 +2789,57 @@ const Apps = {
 
                 // Workaround for Google Refused to Connect
                 if (url.includes('google.') && !url.includes('igu=1')) {
-                    url += (url.includes('?') ? '&' : '?') + 'igu=1';
+                    if (url.includes('/search') || url.includes('/webhp') || url.includes('?q=')) {
+                        url += (url.includes('?') ? '&' : '?') + 'igu=1';
+                    }
                 }
 
                 tabs[activeTabIdx].url = url;
                 tabs[activeTabIdx].title = url.split('/')[2] || url;
+                urlInput.value = url;
                 const frame = document.getElementById(`${winId}-frame-${activeTabIdx}`);
-                if (frame) frame.src = url;
+                
+                if (frame) {
+                    frame.src = url;
+                }
                 
                 // Add to history
                 history.unshift({ title: tabs[activeTabIdx].title, url: url, time: new Date().toLocaleString() });
                 if (history.length > 100) history.pop();
                 localStorage.setItem('browser_history', JSON.stringify(history));
                 
-                render();
+                updateTabs();
+            };
+
+            window[`_go_${winId}`] = go;
+            window[`_set_tab_state_${winId}`] = (url, title) => {
+                if (url) tabs[activeTabIdx].url = url;
+                if (title) tabs[activeTabIdx].title = title;
+                updateTabs();
             };
 
             urlInput.onkeydown = (e) => { if (e.key === 'Enter') go(); };
             document.getElementById(`${winId}-back`).onclick = () => {
                 const frame = document.getElementById(`${winId}-frame-${activeTabIdx}`);
-                if (frame) frame.contentWindow.history.back();
+                try {
+                    if (frame && frame.contentWindow) frame.contentWindow.history.back();
+                } catch (e) {
+                    console.warn("Navigation blocked by browser security");
+                }
             };
             document.getElementById(`${winId}-forward`).onclick = () => {
                 const frame = document.getElementById(`${winId}-frame-${activeTabIdx}`);
-                if (frame) frame.contentWindow.history.forward();
+                try {
+                    if (frame && frame.contentWindow) frame.contentWindow.history.forward();
+                } catch (e) {
+                    console.warn("Navigation blocked by browser security");
+                }
             };
             document.getElementById(`${winId}-reload`).onclick = () => {
                 const frame = document.getElementById(`${winId}-frame-${activeTabIdx}`);
-                if (frame) frame.src = frame.src;
+                if (frame) {
+                    frame.src = frame.src;
+                }
             };
 
             document.getElementById(`${winId}-bookmark`).onclick = () => {
@@ -3780,6 +3822,38 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
         window.addEventListener('load', refreshDesktopIcons);
     }
+    
+    // Message listener for proxied browser navigation
+    window.addEventListener('message', (e) => {
+        if (!e.data || !e.data.winId) return;
+        
+        const { winId, url, title, type } = e.data;
+        
+        if (type === 'browser-navigate') {
+            if (window[`_go_${winId}`]) {
+                const urlInput = document.getElementById(`${winId}-url`);
+                if (urlInput) {
+                    urlInput.value = url;
+                    if (window[`_set_tab_state_${winId}`]) {
+                        window[`_set_tab_state_${winId}`](url, "Loading...");
+                    }
+                    window[`_go_${winId}`]();
+                }
+            }
+        } else if (type === 'browser-state' || type === 'browser-title') {
+            if (window[`_set_tab_state_${winId}`]) {
+                window[`_set_tab_state_${winId}`](null, title);
+            }
+            // Also update DOM immediately for responsiveness
+            const tabbar = document.getElementById(`${winId}-tabbar`);
+            if (tabbar) {
+                const activeTab = tabbar.querySelector('.browser-tab.active span');
+                if (activeTab && title) {
+                    activeTab.textContent = title;
+                }
+            }
+        }
+    });
     
     // Ensure icons are correctly placed after a short delay for layout calculation
     setTimeout(refreshDesktopIcons, 500);
