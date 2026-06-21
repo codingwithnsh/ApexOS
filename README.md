@@ -7,10 +7,13 @@ ApexOS is a browser-based operating system that replicates the desktop experienc
   >A few glimpses of ApexOS are below, but they only show part of the story. The real experience is within the system. Explore, click around, and discover the secrets you’ll find.
 ### 1. Main Screen:
   <img width="1918" height="906" alt="image" src="https://github.com/user-attachments/assets/0df99ee3-a122-4bcb-8c6e-e1b8a30dae9b" />
+
 ### 2. Apex Terminal:
   <img width="1918" height="911" alt="image" src="https://github.com/user-attachments/assets/27ed5e3f-91fe-4544-b37a-8c0a893f2ab1" />
+
 ### 3. Apex Browser:
   <img width="1918" height="907" alt="image" src="https://github.com/user-attachments/assets/dd2382db-80c2-49f2-98c6-9d3bcdf82c19" />
+
 ### 4. Retro Snake Game: 
   <img width="426" height="240" alt="snake-retro" src="https://github.com/user-attachments/assets/e9bfa843-29f8-445e-ad47-2add01888070" />
 
@@ -36,14 +39,14 @@ ApexOS is a browser-based operating system that replicates the desktop experienc
 Click on the Launch button [above](#try-it) to start instantly.....
 
 ---
-## ✨ Features
-1.Fully interactive desktop environment
-2.Built-in applications and tools
-3.Integrated Music Player
-4.Task Manager for monitoring running apps
-5.Modern and responsive user interface
-6.Runs entirely in the browser with no installation required
-7.Completely Open Sourced
+## Features
+- Fully interactive desktop environment
+- Built-in applications and tools
+- Integrated Music Player
+- Task Manager for monitoring running apps
+- Modern and responsive user interface
+- Runs entirely in the browser with no installation required
+- Completely Open Sourced
 
 ---
 ### Useful Shortcuts
