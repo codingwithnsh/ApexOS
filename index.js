@@ -105,7 +105,7 @@ const Registry = {
             
 
             if (!this.HKLM['Software\\System\\Version']) { // Default HKLM settings
-                this.HKLM['Software\\System\\Version'] = 'ApexOS 1.5.0';
+                this.HKLM['Software\\System\\Version'] = 'ApexOS 1.6.0';
                 this.HKLM['Software\\System\\Theme'] = 'theme-sleek';
                 this.save();
             }
@@ -1374,7 +1374,7 @@ const Apps = {
                                 <div>
                                     <b style="color:white">apex_user@ApexOS</b><br>
                                     -----------------<br>
-                                    OS: ApexOS v1.5.0<br>
+                                    OS: ApexOS v1.6.0<br>
                                     Kernel: 0.2.0-web<br>
                                     Uptime: ${Math.floor(performance.now()/60000)}m<br>
                                     Packages: 42 (npm)<br>
@@ -2051,7 +2051,7 @@ const Apps = {
                     <div style="background:rgba(255,255,255,0.05); padding:20px; border-radius:12px">
                         <div style="text-align:center; margin-bottom:20px">
                             <div style="font-size:3em; margin-bottom:10px">🚀</div>
-                            <div style="font-size:1.5em; font-weight:bold">ApexOS v1.5.0</div>
+                            <div style="font-size:1.5em; font-weight:bold">ApexOS v1.6.0</div>
                             <div style="opacity:0.6">"The Productivity Update"</div>
                         </div>
                         <table style="width:100%; border-collapse:collapse">
@@ -2109,7 +2109,7 @@ const Apps = {
         launch: () => {
             const win = wm.createWindow("About ApexOS", `
                 <div style="text-align:center; padding:10px;">
-                    <h2 style="color:var(--text-color)">🚀 ApexOS v1.5.0</h2>
+                    <h2 style="color:var(--text-color)">🚀 ApexOS v1.6.0</h2>
                     <p>Created by: <b>Naman Shettigar</b></p>
                     <p>Built by Naman Shettigar</p>
                     <p>A retro-modern WebOS experience.</p>
@@ -2235,7 +2235,7 @@ const Apps = {
                                 </div>
                             </div>
                             <div style="margin-top:30px; border-top:1px solid #333; padding-top:15px">
-                                <p style="font-size:0.9em; opacity:0.8">OS: ApexOS v1.5.0</p>
+                                <p style="font-size:0.9em; opacity:0.8">OS: ApexOS v1.6.0</p>
                                 <p style="font-size:0.9em; opacity:0.8">Kernel: ApexKernel 0.2.0</p>
                                 <p style="font-size:0.9em; opacity:0.8">System Uptime: ${Math.floor(performance.now() / 1000)}s</p>
                             </div>
@@ -3867,7 +3867,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const welcomeWin = wm.createWindow('Welcome', `
             <div style="text-align:center; padding:10px;">
-                <h2 style="color:var(--text-color)">🚀 ApexOS v1.5.0</h2>
+                <h2 style="color:var(--text-color)">🚀 ApexOS v1.6.0</h2>
                 <p>System Initialized Successfully.</p>
                 <hr style="border:0; border-top:1px solid #333; margin:15px 0;">
                 <p>Welcome to your retro-modern workspace.</p>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect x="6" y="8" width="52" height="48" rx="4" fill="#0f172a"/>
+  <rect x="10" y="14" width="44" height="6" fill="#f97316" rx="2"/>
+  <g fill="#fff" font-family="monospace" font-size="6">
+    <text x="20" y="34">console.log('hi')</text>
+  </g>
+  <rect x="12" y="38" width="40" height="10" fill="#111827" rx="2"/>
+</svg>
